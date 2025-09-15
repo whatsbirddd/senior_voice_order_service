@@ -1,0 +1,79 @@
+{
+  "compilerOptions": {
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "es6"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@/components/*": ["./components/*"],
+      "@/app/*": ["./app/*"],
+      "lucide-react@0.487.0": ["./node_modules/lucide-react"],
+      "@radix-ui/react-accordion@1.2.3": ["./node_modules/@radix-ui/react-accordion"],
+      "@radix-ui/react-alert-dialog@1.1.6": ["./node_modules/@radix-ui/react-alert-dialog"],
+      "@radix-ui/react-aspect-ratio@1.1.2": ["./node_modules/@radix-ui/react-aspect-ratio"],
+      "@radix-ui/react-avatar@1.1.3": ["./node_modules/@radix-ui/react-avatar"],
+      "@radix-ui/react-slot@1.1.2": ["./node_modules/@radix-ui/react-slot"],
+      "@radix-ui/react-label@2.1.2": ["./node_modules/@radix-ui/react-label"],
+      "@radix-ui/react-tabs@1.1.3": ["./node_modules/@radix-ui/react-tabs"],
+      "@radix-ui/react-slider@1.2.3": ["./node_modules/@radix-ui/react-slider"],
+      "@radix-ui/react-popover@1.1.6": ["./node_modules/@radix-ui/react-popover"],
+      "@radix-ui/react-progress@1.1.2": ["./node_modules/@radix-ui/react-progress"],
+      "@radix-ui/react-hover-card@1.1.6": ["./node_modules/@radix-ui/react-hover-card"],
+      "@radix-ui/react-dialog@1.1.6": ["./node_modules/@radix-ui/react-dialog"],
+      "@radix-ui/react-scroll-area@1.2.3": ["./node_modules/@radix-ui/react-scroll-area"],
+      "@radix-ui/react-navigation-menu@1.2.5": ["./node_modules/@radix-ui/react-navigation-menu"],
+      "@radix-ui/react-tooltip@1.1.8": ["./node_modules/@radix-ui/react-tooltip"],
+      "@radix-ui/react-switch@1.1.3": ["./node_modules/@radix-ui/react-switch"],
+      "@radix-ui/react-radio-group@1.2.3": ["./node_modules/@radix-ui/react-radio-group"],
+      "@radix-ui/react-toggle-group@1.1.2": ["./node_modules/@radix-ui/react-toggle-group"],
+      "@radix-ui/react-menubar@1.1.6": ["./node_modules/@radix-ui/react-menubar"],
+      "@radix-ui/react-separator@1.1.2": ["./node_modules/@radix-ui/react-separator"],
+      "@radix-ui/react-select@2.1.6": ["./node_modules/@radix-ui/react-select"],
+      "@radix-ui/react-dropdown-menu@2.1.6": ["./node_modules/@radix-ui/react-dropdown-menu"],
+      "@radix-ui/react-context-menu@2.2.6": ["./node_modules/@radix-ui/react-context-menu"],
+      "react-day-picker@8.10.1": ["./node_modules/react-day-picker"],
+      "embla-carousel-react@8.6.0": ["./node_modules/embla-carousel-react"],
+      "recharts@2.15.2": ["./node_modules/recharts"],
+      "cmdk@1.1.1": ["./node_modules/cmdk"],
+      "vaul@1.1.2": ["./node_modules/vaul"],
+      "react-hook-form@7.55.0": ["./node_modules/react-hook-form"],
+      "input-otp@1.4.2": ["./node_modules/input-otp"],
+      "react-resizable-panels@2.1.7": ["./node_modules/react-resizable-panels"],
+      "next-themes@0.4.6": ["./node_modules/next-themes"],
+      "sonner@2.0.3": ["./node_modules/sonner"]
+    },
+    "target": "ES2017"
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "App.tsx",
+    "main.tsx",
+    "index.css",
+    "components/ui/**"
+  ]
+}

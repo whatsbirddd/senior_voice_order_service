@@ -1,0 +1,121 @@
+{
+  "name": "점원 Agent - 말 걸면 다 해주는 똑똑한 점원",
+  "short_name": "점원 Agent",
+  "description": "음성 인식으로 메뉴 추천, 주문, 결제까지 한 번에! 아이폰 16 최적화",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f97316",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "ko",
+  "categories": ["food", "lifestyle", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-iphone16.png",
+      "sizes": "393x852",
+      "type": "image/png",
+      "platform": "ios",
+      "label": "아이폰 16에서의 점원 Agent"
+    },
+    {
+      "src": "/screenshot-iphone16-pro-max.png",
+      "sizes": "430x932",
+      "type": "image/png", 
+      "platform": "ios",
+      "label": "아이폰 16 Pro Max에서의 점원 Agent"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "메뉴 추천",
+      "short_name": "추천",
+      "description": "인기 메뉴 추천받기",
+      "url": "/?action=recommend",
+      "icons": [
+        {
+          "src": "/shortcut-recommend.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "음성 주문",
+      "short_name": "주문",
+      "description": "음성으로 주문하기",
+      "url": "/?action=voice-order",
+      "icons": [
+        {
+          "src": "/shortcut-voice.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "삼성페이 결제",
+      "short_name": "결제",
+      "description": "삼성페이로 빠른 결제",
+      "url": "/?action=payment",
+      "icons": [
+        {
+          "src": "/shortcut-payment.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ],
+  "prefer_related_applications": false,
+  "edge_side_panel": {
+    "preferred_width": 393
+  }
+}
