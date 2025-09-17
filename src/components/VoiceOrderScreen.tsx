@@ -1,8 +1,10 @@
 'use client';
 
-import { chatWithAgent, transcribeAudio, generateSessionId, AgentResponse } from '../lib/agent';
-import React, { useState, useEffect, useRef } from 'react';
+import { chatWithAgent, generateSessionId, AgentResponse } from '../lib/agent';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styles from './VoiceOrderScreen.module.css';
+import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
+
 
 interface MenuItem {
   id: string;
@@ -32,13 +34,124 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
   const [selectedStore, setSelectedStore] = useState('옥소반 마곡본점');
   const [currentStep, setCurrentStep] = useState<'store' | 'menu' | 'order' | 'confirm'>('store');
   const [isProcessing, setIsProcessing] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  // const recognitionRef = useRef<any>(null);
+  // const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const [latestAgentMessage, setLatestAgentMessage] = useState('안녕하세요. 옥소반 마곡본점이에요. 메뉴 추천 도와드릴까요?');
 
   // ★ Agent 대화 상태(시니어 친화 안내)
   const [agentMessages, setAgentMessages] = useState<{ role: 'assistant' | 'user'; content: string }[]>([
     { role: 'assistant', content: '안녕하세요. 옥소반 마곡본점이에요. 메뉴 추천 도와드릴까요?' },
   ]);
   const [agentLoading, setAgentLoading] = useState(false);
+
+  const storeImages: Record<string, string> = {
+    '옥소반 마곡본점': 'https://images.unsplash.com/photo-1527169402691-feff5539e52c?auto=format&fit=crop&w=960&q=80',
+  };
+
+  const heroImage = storeImages[selectedStore] || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=960&q=80';
+  const synthesizerRef = useRef<sdk.SpeechSynthesizer | null>(null);
+
+  const ensureAzureTTS = async () => {
+    // ensureAzure() 안에서 만든 speechConfig 재활용
+    await ensureAzure();
+    if (!synthesizerRef.current) {
+      const audioOut = sdk.AudioConfig.fromDefaultSpeakerOutput();
+      synthesizerRef.current = new sdk.SpeechSynthesizer(speechConfigRef.current!, audioOut);
+      // 선택: 목소리 지정
+      speechConfigRef.current!.speechSynthesisVoiceName = 'ko-KR-SunHiNeural';
+    }
+  };
+
+  const speak = useCallback(async (text: string) => {
+    if (!text) return;
+    try {
+      await ensureAzureTTS();
+      await new Promise<void>((resolve, reject) => {
+        synthesizerRef.current!.speakTextAsync(text, () => resolve(), (e) => reject(e));
+      });
+    } catch (e) { console.error('[Azure TTS error]', e); }
+  }, []);
+  // const speak = useCallback((text: string) => {
+  //   if (typeof window === 'undefined' || !text) {
+  //     return;
+  //   }
+  //   const synth = window.speechSynthesis;
+  //   if (!synth) {
+  //     return;
+  //   }
+  //   synth.cancel();
+  //   const utterance = new SpeechSynthesisUtterance(text);
+  //   utterance.lang = 'ko-KR';
+  //   utterance.rate = 0.95;
+  //   speechRef.current = utterance;
+  //   synth.speak(utterance);
+  // }, []);
+
+  useEffect(() => {
+    speak(latestAgentMessage);
+  }, [latestAgentMessage, speak]);
+
+  // useEffect(() => {
+  //   return () => {
+  //     if (typeof window !== 'undefined') {
+  //       window.speechSynthesis?.cancel();
+  //     }
+  //   };
+  // }, []);
+
+  // Azure STT 객체
+  const recognizerRef = useRef<sdk.SpeechRecognizer | null>(null);
+  const speechConfigRef = useRef<sdk.SpeechConfig | null>(null);
+  const tokenExpireAtRef = useRef(0);
+
+  // 토큰/객체 보장
+  const ensureAzure = async () => {
+    const now = Date.now();
+    if (speechConfigRef.current && now < tokenExpireAtRef.current - 30_000) return;
+
+    const r = await fetch('/api/audio/transcribe', { method: 'GET', cache: 'no-store' });
+    const ct = r.headers.get('content-type') || '';
+    const body = ct.includes('application/json') ? await r.json() : { errorText: await r.text() };
+
+
+    if (!r.ok || !(body as any)?.token) {
+      console.error('[token error]', r.status, body);
+      throw new Error((body as any)?.error || (body as any)?.errorText || 'Azure token failed');
+    }
+
+    const { token, region, endpoint, expiresInSec } = body as any;
+
+    let speechConfig: sdk.SpeechConfig;
+
+    if (endpoint) {
+      // endpoint 우선 사용 가능
+      speechConfig = sdk.SpeechConfig.fromEndpoint(new URL(endpoint));
+      // 브라우저에는 '키' 대신 '토큰'만 주입
+      (speechConfig as any).authorizationToken = token;
+    } else {
+      speechConfig = sdk.SpeechConfig.fromAuthorizationToken(token, region);
+    }
+
+    speechConfig.speechRecognitionLanguage = 'ko-KR';
+    speechConfig.speechSynthesisVoiceName = 'ko-KR-SeoHyeonNeural';
+
+    speechConfigRef.current = speechConfig;
+    tokenExpireAtRef.current = now + (expiresInSec ?? 600) * 1000;
+
+    // 새 객체로 재생성
+    recognizerRef.current?.close();
+    recognizerRef.current = new sdk.SpeechRecognizer(
+      speechConfig,
+      sdk.AudioConfig.fromDefaultMicrophoneInput()
+    );
+
+    synthesizerRef.current?.close();
+    synthesizerRef.current = new sdk.SpeechSynthesizer(
+      speechConfig,
+      sdk.AudioConfig.fromDefaultSpeakerOutput()
+    );
+  };
+
 
   // 시니어 친화적 메뉴 데이터
   const sampleMenuItems: MenuItem[] = [
@@ -54,102 +167,118 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
     setMenuItems(sampleMenuItems);
   }, []);
 
-  // ★ Agent 호출(내부적으로 chatWithAgent 사용)
-  // const askAgent = async (prompt: string) => {
-  //   try {
-  //     setAgentLoading(true);
-  //     setAgentMessages((m) => [...m, { role: 'user', content: prompt }]);
-  //     const res: AgentResponse | any = await chatWithAgent({
-  //       sessionId,
-  //       store: selectedStore,
-  //       message: prompt,
-  //     });
-  //     const reply = (res && (res.reply || res.message || res.text)) ?? '안내를 불러오지 못했어요. 잠시 뒤 다시 시도해주세요.';
-  //     setAgentMessages((m) => [...m, { role: 'assistant', content: reply }]);
-  //   } catch {
-  //     setAgentMessages((m) => [...m, { role: 'assistant', content: '지금은 안내가 어려워요. 잠시 뒤 다시 시도해주세요.' }]);
-  //   } finally {
-  //     setAgentLoading(false);
-  //   }
-  // };
+
+
   // ★ Agent 호출(내부적으로 chatWithAgent 사용)
   const askAgent = async (prompt: string) => {
     try {
       setAgentLoading(true);
       setAgentMessages((m) => [...m, { role: 'user', content: prompt }]);
-
-      // ✅ message → prompt 로 변경
-      const res: AgentResponse | any = await chatWithAgent({ store: selectedStore, prompt });
-
-      // ✅ 다양한 응답 타입 대비 + 콘솔로그로 디버깅
-      console.log('[chatWithAgent][res]:', res);
-      const reply =
-        (typeof res === 'string' && res) ||
-        res?.reply ||
-        res?.message ||   // 서버가 message로 줄 수도 있으니 fallback은 유지
-        res?.text ||
-        '안내를 불러오지 못했어요. 잠시 뒤 다시 시도해주세요.';
-
+      const res: AgentResponse | any = await chatWithAgent({
+        sessionId,
+        store: selectedStore,
+        message: prompt,
+      });
+      const reply = (res && (res.reply || res.message || res.text)) ?? '안내를 불러오지 못했어요. 잠시 뒤 다시 시도해주세요.';
       setAgentMessages((m) => [...m, { role: 'assistant', content: reply }]);
-    } catch (e) {
-      console.error('[chatWithAgent][error]:', e); // ✅ 에러 내용을 확인
-      setAgentMessages((m) => [
-        ...m,
-        { role: 'assistant', content: '지금은 안내가 어려워요. 잠시 뒤 다시 시도해주세요.' },
-      ]);
+      setLatestAgentMessage(reply);
+    } catch {
+      setAgentMessages((m) => [...m, { role: 'assistant', content: '지금은 안내가 어려워요. 잠시 뒤 다시 시도해주세요.' }]);
+      setLatestAgentMessage('지금은 안내가 어려워요. 잠시 뒤 다시 시도해주세요.');
     } finally {
       setAgentLoading(false);
     }
   };
 
+  // const startListening = () => {
+  //   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+  //     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+  //     recognitionRef.current = new SpeechRecognition();
+  //     recognitionRef.current.continuous = true;
+  //     recognitionRef.current.interimResults = true;
+  //     recognitionRef.current.lang = 'ko-KR';
 
-  const startListening = () => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'ko-KR';
+  //     recognitionRef.current.onstart = () => {
+  //       setIsListening(true);
+  //       setTranscript('');
+  //     };
 
-      recognitionRef.current.onstart = () => {
-        setIsListening(true);
-        setTranscript('');
+  //     recognitionRef.current.onresult = (event: any) => {
+  //       let finalTranscript = '';
+  //       for (let i = event.resultIndex; i < event.results.length; i++) {
+  //         if (event.results[i].isFinal) {
+  //           finalTranscript += event.results[i][0].transcript;
+  //         }
+  //       }
+  //       if (finalTranscript) {
+  //         setTranscript(finalTranscript);
+  //         processVoiceCommand(finalTranscript);
+  //       }
+  //     };
+
+  //     recognitionRef.current.onerror = (event: any) => {
+  //       console.error('음성 인식 오류:', event.error);
+  //       setIsListening(false);
+  //     };
+
+  //     recognitionRef.current.onend = () => {
+  //       setIsListening(false);
+  //     };
+
+  //     recognitionRef.current.start();
+  //   } else {
+  //     alert('이 브라우저는 음성 인식을 지원하지 않습니다.');
+  //   }
+  // };
+
+  // const stopListening = () => {
+  //   if (recognitionRef.current) {
+  //     recognitionRef.current.stop();
+  //   }
+  //   setIsListening(false);
+  // };
+  const startListening = async () => {
+    try {
+      await ensureAzure();
+      setTranscript('');
+      setIsListening(true);
+
+      const rec = recognizerRef.current!;
+      rec.recognizing = (_s, e) => {
+        // 중간결과 보고 싶으면 사용
+        // setTranscript(e.result.text);
       };
-
-      recognitionRef.current.onresult = (event: any) => {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
+      rec.recognized = (_s, e) => {
+        if (e.result.reason === sdk.ResultReason.RecognizedSpeech) {
+          const text = e.result.text?.trim();
+          if (text) {
+            setTranscript(text);
+            processVoiceCommand(text);  // 기존 로직 재사용
           }
         }
-        if (finalTranscript) {
-          setTranscript(finalTranscript);
-          processVoiceCommand(finalTranscript);
-        }
       };
-
-      recognitionRef.current.onerror = (event: any) => {
-        console.error('음성 인식 오류:', event.error);
+      rec.canceled = (_s, e) => {
+        console.warn('[Azure STT canceled]', e.errorDetails);
         setIsListening(false);
       };
+      rec.sessionStopped = () => setIsListening(false);
 
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current.start();
-    } else {
-      alert('이 브라우저는 음성 인식을 지원하지 않습니다.');
+      rec.startContinuousRecognitionAsync();
+    } catch (err) {
+      console.error('[Azure STT start error]', err);
+      setIsListening(false);
     }
   };
 
   const stopListening = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-    setIsListening(false);
+    const rec = recognizerRef.current;
+    if (!rec) return;
+    rec.stopContinuousRecognitionAsync(
+      () => setIsListening(false),
+      (err) => { console.error('[Azure STT stop error]', err); setIsListening(false); }
+    );
   };
+
 
   // ★ 음성 명령: store(소개) 단계와 menu(주문) 단계 모두 처리
   const processVoiceCommand = (command: string) => {
@@ -158,7 +287,17 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
 
     // 소개 화면에서의 명령
     if (currentStep === 'store') {
-      {
+      if (/추천|메뉴/.test(lower)) {
+        askAgent('오늘 추천 메뉴 알려줘');
+      } else if (/사람|대기|줄/.test(lower)) {
+        askAgent('지금 가면 붐비나요?');
+      } else if (/전화|예약/.test(lower)) {
+        window.location.href = `tel:0212345678`;
+      } else if (/길찾기|오시는|지도/.test(lower)) {
+        window.open(`https://map.naver.com/v5/search/${encodeURIComponent('서울 강서구 마곡동 123-45, 1층')}`, '_blank');
+      } else if (/주문|시작/.test(lower)) {
+        setCurrentStep('menu');
+      } else {
         askAgent(`요청: ${command}`);
       }
     }
@@ -227,58 +366,48 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
   };
 
   // ★ 새 소개 화면 렌더러(훅 사용 없음)
-  // ★ 새 소개 화면 렌더러(훅 사용 없음)
   const renderStoreIntro = () => {
     return (
-      <div className={styles.animateFadeIn}>
-        <div className={styles.sectionHeader}>
-          <h1 className={styles.sectionTitle}>옥소반 마곡본점</h1>
-          <p className={styles.sectionSubtitle}>어서 오세요</p>
+      <div className={styles.heroWrapper}>
+        <div className={styles.heroHeader}>
+          <h1 className={styles.heroGreeting}>어서오세요!</h1>
+          <div className={styles.progressDots}>
+            <span className={styles.progressDotActive} />
+            <span className={styles.progressDot} />
+            <span className={styles.progressDot} />
+          </div>
         </div>
 
-        <div className={styles.infoCard}>
+        <div className={styles.heroCard}>
+          <img src={heroImage} alt={`${selectedStore} 매장 사진`} className={styles.heroImage} />
+        </div>
+
+        <div className={styles.agentCard}>
+          <p className={styles.agentMessage}>{latestAgentMessage}</p>
+          <p className={styles.agentHint}>"주문할게요" 라고 말씀해 주세요.</p>
           <button
-            className={styles.primaryButton}
+            className={styles.agentActionButton}
             onClick={() => askAgent('이 가게의 대표 메뉴와 추천 메뉴에 대해 자세히 설명해주세요')}
             disabled={agentLoading}
           >
-            {agentLoading ? '메뉴 정보 불러오는 중...' : '추천 메뉴'}
+            {agentLoading ? '안내 불러오는 중...' : '추천 메뉴 듣기'}
           </button>
         </div>
 
-        {agentMessages.length > 1 && (
-          <div className={styles.agentChat}>
-            {agentMessages.slice(1).map((m, idx) => (
-              <div
-                key={idx}
-                className={m.role === 'assistant' ? styles.chatBubbleAssistant : styles.chatBubbleUser}
-              >
-                {m.content}
-              </div>
-            ))}
-            {agentLoading && <div className={styles.chatBubbleAssistant}>잠시만 기다려주세요…</div>}
-          </div>
-        )}
-
-        <div className={styles.voiceBlock}>
+        <div className={styles.voiceCta}>
           <button
             onClick={isListening ? stopListening : startListening}
-            className={[styles.voiceButton, isListening ? styles.recording : ''].filter(Boolean).join(' ')}
-            disabled={isProcessing || agentLoading}
+            className={styles.voiceCtaButton}
+            disabled={agentLoading}
           >
-            {isListening ? '🎤' : '🗣️'}
+            {isListening ? '듣고 있어요…' : '🎤 음성으로 말하기'}
           </button>
-          <p className={styles.voiceHint}>
-            {isListening ? '듣고 있어요…' : '말씀해 보세요 (예: "메뉴 추천")'}
-          </p>
           {transcript && <p className={styles.transcript}>"{transcript}"</p>}
         </div>
 
-        <div className={styles.ctaBar}>
-          <button className={styles.primaryButton} onClick={() => setCurrentStep('menu')}>
-            메뉴 정보 확인하기
-          </button>
-        </div>
+        <button className={styles.secondaryLink} onClick={() => setCurrentStep('menu')}>
+          메뉴 목록 보기
+        </button>
       </div>
     );
   };
@@ -378,13 +507,13 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
     </div>
   );
 
+  if (currentStep === 'store') {
+    return renderStoreIntro();
+  }
+
   return (
-    <div className={styles.mobileShell}>
-      <div className={styles.inner}>
-        {/* ★ 기존 renderStoreSelection() → 새 소개 화면 */}
-        {currentStep === 'store' && renderStoreIntro()}
-        {currentStep === 'menu' && renderMenuSelection()}
-      </div>
+    <div className={styles.voiceOrderScreen}>
+      {renderMenuSelection()}
     </div>
   );
 };
