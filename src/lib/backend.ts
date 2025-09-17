@@ -1,4 +1,4 @@
-export const BACKEND_BASE = process.env.BACKEND_BASE || process.env.NEXT_PUBLIC_BACKEND_BASE || 'http://localhost:5173';
+export const BACKEND_BASE = process.env.BACKEND_BASE || process.env.NEXT_PUBLIC_BACKEND_BASE || 'http://localhost:8000';
 
 export async function proxyJSON(path: string, init?: RequestInit) {
   const url = `${BACKEND_BASE}${path}`;
@@ -15,4 +15,3 @@ export async function proxyJSON(path: string, init?: RequestInit) {
     headers: { 'content-type': 'application/json' },
   });
 }
-

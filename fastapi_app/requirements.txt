@@ -1,0 +1,6 @@
+fastapi>=0.111,<1
+uvicorn>=0.22,<1
+pydantic>=2.7,<3
+openai>=1.43.0
+python-multipart>=0.0.7
+azure-cognitiveservices-speech>=1.38.0

@@ -18,6 +18,17 @@ const state = {
   lastHeard: '',
 };
 
+function setSpeechHint(text) {
+  const input = qs('#speechHint');
+  if (!input) return;
+  input.value = text || '';
+  if (text && text.trim()) {
+    input.classList.add('filled');
+  } else {
+    input.classList.remove('filled');
+  }
+}
+
 function speak(text) {
   try {
     const u = new SpeechSynthesisUtterance(text);
@@ -156,6 +167,41 @@ async function callAgent(message) {
   }
 
   if (data.reply) speak(data.reply);
+
+  // Apply agent-driven UI actions
+  if (Array.isArray(data.actions)) {
+    for (const a of data.actions) applyAction(a);
+    render();
+  }
+}
+
+function applyAction(a){
+  switch(a.type){
+    case 'SET_STEP':
+      state.step = Math.max(0, Math.min(3, Number(a.value||state.step)));
+      break;
+    case 'SELECT_MENU_BY_NAME': {
+      const idx = (state.menu||[]).findIndex(m => m.name === a.name);
+      if (idx >= 0) state.currentIdx = idx;
+      break;
+    }
+    case 'SET_QTY':
+      state.qty = Math.max(1, Number(a.value||1));
+      break;
+    case 'INCREMENT_QTY':
+      state.qty += 1; break;
+    case 'DECREMENT_QTY':
+      state.qty = Math.max(1, state.qty-1); break;
+    case 'NEXT':
+      nextStep(); break;
+    case 'PREV':
+      state.currentIdx = (state.currentIdx-1 + (state.menu?.length||1)) % (state.menu?.length||1);
+      break;
+    case 'ORDER':
+      doOrder(); break;
+    case 'ORDER_COMPLETE':
+      showDone(Math.floor(100+Math.random()*900)); break;
+  }
 }
 
 // ---------------- UI (screens) ----------------
@@ -176,6 +222,7 @@ function render(){
     </section>`;
     qs('#assistTitle').textContent = '환영합니다';
     qs('#assistText').textContent = (state.lastHeard ? `방금 말씀: “${state.lastHeard}”\n` : '') + '음성 버튼을 누르거나 아래 주문하기 버튼을 눌러 진행하세요.';
+    setSpeechHint('예: "주문할게요"라고 말씀해 주세요');
   } else if(state.step===1){
     const item = state.menu[state.currentIdx] || state.featured || {name:'메뉴', price:0};
     s.innerHTML = `
@@ -195,6 +242,7 @@ function render(){
     </section>`;
     qs('#assistTitle').textContent = '추천 안내';
     qs('#assistText').textContent = (state.lastHeard ? `방금 말씀: “${state.lastHeard}”\n` : '') + "오늘의 추천이에요. '이걸로 할게요' 또는 '다음'이라고 말해보세요.";
+    setSpeechHint('예: "이걸로 할게요" · "다음"');
     qs('#prev').onclick = () => { state.currentIdx = (state.currentIdx-1+state.menu.length)%state.menu.length; render(); };
     qs('#next').onclick = () => { state.currentIdx = (state.currentIdx+1)%state.menu.length; render(); };
     qs('#choose').onclick = selectCurrent;
@@ -218,6 +266,7 @@ function render(){
     </section>`;
     qs('#assistTitle').textContent = '얼마나 드릴까요?';
     qs('#assistText').textContent = (state.lastHeard ? `방금 말씀: “${state.lastHeard}”\n` : '') + "'두 개', '세 개' 처럼 말씀해도 돼요.";
+    setSpeechHint('예: "두 개 주세요"');
     qs('#minus').onclick = () => { state.qty = Math.max(1, state.qty-1); qs('#qty').textContent = state.qty; };
     qs('#plus').onclick = () => { state.qty += 1; qs('#qty').textContent = state.qty; };
     qs('#toConfirm').onclick = () => { state.step=3; render(); };
@@ -243,6 +292,7 @@ function render(){
     </section>`;
     qs('#assistTitle').textContent = `${item.name} ${state.qty}개 맞나요?`;
     qs('#assistText').textContent = (state.lastHeard ? `방금 말씀: “${state.lastHeard}”\n` : '') + "'네, 주문할게요' 혹은 '다시 선택할게요'라고 말해보세요.";
+    setSpeechHint('예: "네, 주문할게요" · "다시 선택할게요"');
     qs('#backQty').onclick = () => { state.step=2; render(); };
     qs('#orderBtn').onclick = doOrder;
   }
@@ -405,4 +455,8 @@ function wireUI() {
   })();
 }
 
-document.addEventListener('DOMContentLoaded', wireUI);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', wireUI);
+} else {
+  wireUI();
+}

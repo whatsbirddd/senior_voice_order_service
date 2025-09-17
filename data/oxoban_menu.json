@@ -1,0 +1,18 @@
+{
+  "store": "옥소반 마곡본점",
+  "featured": {
+    "name": "대표메뉴",
+    "desc": "대표 이미지 적용",
+    "price": 0,
+    "image": "https://search.pstatic.net/common/?src=https%3A%2F%2Fldb-phinf.pstatic.net%2F20250507_48%2F17466135442565pQOq_JPEG%2FKakaoTalk_20241217_182830268_20.jpg"
+  },
+  "menu": [
+    {
+      "name": "대표메뉴",
+      "desc": "대표 이미지 적용",
+      "price": 0,
+      "image": "https://search.pstatic.net/common/?src=https%3A%2F%2Fldb-phinf.pstatic.net%2F20250507_48%2F17466135442565pQOq_JPEG%2FKakaoTalk_20241217_182830268_20.jpg"
+    }
+  ]
+}
+
