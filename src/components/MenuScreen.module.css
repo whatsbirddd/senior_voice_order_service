@@ -1,0 +1,175 @@
+/* MenuScreen 전용 스타일 */
+.menuContainer {
+  padding: 1rem;
+  max-width: 32rem;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.menuHeader {
+  text-align: center;
+  margin-bottom: 2rem;
+  padding: 1rem 0;
+}
+
+.menuTitle {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 0.5rem;
+}
+
+.menuSubtitle {
+  color: #64748b;
+  font-size: 1rem;
+}
+
+.menuGrid {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 6rem;
+}
+
+.menuItem {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  border-color: #3b82f6;
+}
+
+.menuItemHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.menuItemName {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.menuItemPrice {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #059669;
+  white-space: nowrap;
+}
+
+.menuItemDescription {
+  color: #64748b;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.menuItemTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.menuItemTag {
+  background: #f1f5f9;
+  color: #475569;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.menuItemTag.popular {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.menuItemTag.spicy {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.menuItemTag.vegetarian {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.quantityControls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.quantityButton {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid #3b82f6;
+  background: white;
+  color: #3b82f6;
+  font-size: 1.25rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.quantityButton:hover {
+  background: #3b82f6;
+  color: white;
+}
+
+.quantityButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quantityDisplay {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1e293b;
+  min-width: 3rem;
+  text-align: center;
+}
+
+.addToCartButton {
+  width: 100%;
+  background: #059669;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 1rem;
+  transition: all 0.2s ease;
+}
+
+.addToCartButton:hover {
+  background: #047857;
+  transform: translateY(-1px);
+}
+
+.addToCartButton:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+}

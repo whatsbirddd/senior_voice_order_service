@@ -1,0 +1,909 @@
+.voiceOrderScreen {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+  font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+/* 헤더 */
+.header {
+  background: linear-gradient(135deg, #4CAF50, #45a049);
+  color: white;
+  padding: 30px;
+  text-align: center;
+}
+
+.title {
+  font-size: 3rem;
+  font-weight: bold;
+  margin: 0 0 20px 0;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.storeInfo {
+  margin-top: 20px;
+}
+
+.storeName {
+  font-size: 2rem;
+  font-weight: bold;
+  margin: 0 0 10px 0;
+}
+
+.storeAddress {
+  font-size: 1.3rem;
+  margin: 0;
+  opacity: 0.9;
+}
+
+/* 음성 입력 섹션 */
+.voiceSection {
+  padding: 40px;
+  background: #f8f9fa;
+  border-bottom: 3px solid #e9ecef;
+}
+
+.voiceInputArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.voiceButton {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+  color: white;
+  font-size: 3rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 8px 20px rgba(255, 107, 107, 0.4);
+  margin-bottom: 20px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.voiceButton:hover {
+  transform: scale(1.1);
+  box-shadow: 0 12px 25px rgba(255, 107, 107, 0.6);
+}
+
+.voiceButton:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.voiceButton.listening {
+  animation: pulse 1.5s infinite;
+  background: linear-gradient(135deg, #FF4757, #FF3742);
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.1);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.voiceStatus {
+  text-align: center;
+  font-size: 1.4rem;
+  font-weight: 600;
+  min-height: 30px;
+}
+
+.listeningText {
+  color: #FF4757;
+  animation: blink 1s infinite;
+}
+
+.processing {
+  color: #FFA502;
+}
+
+.readyText {
+  color: #2f3542;
+}
+
+@keyframes blink {
+
+  0%,
+  50% {
+    opacity: 1;
+  }
+
+  51%,
+  100% {
+    opacity: 0.5;
+  }
+}
+
+.userInputDisplay {
+  margin-top: 20px;
+}
+
+.inputLabel {
+  display: block;
+  font-size: 1.3rem;
+  font-weight: bold;
+  color: #2f3542;
+  margin-bottom: 10px;
+}
+
+.userInput {
+  width: 100%;
+  padding: 15px 20px;
+  font-size: 1.2rem;
+  border: 3px solid #ddd;
+  border-radius: 10px;
+  background: white;
+  transition: border-color 0.3s ease;
+  box-sizing: border-box;
+}
+
+.userInput:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
+}
+
+/* 메뉴 섹션 */
+.menuSection {
+  padding: 40px;
+}
+
+.menuTitle {
+  font-size: 2.2rem;
+  font-weight: bold;
+  color: #2f3542;
+  margin: 0 0 30px 0;
+  text-align: center;
+}
+
+.menuGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 25px;
+}
+
+.menuCard {
+  background: white;
+  border: 3px solid #e9ecef;
+  border-radius: 15px;
+  padding: 25px;
+  text-align: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.menuCard:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  border-color: #4CAF50;
+}
+
+.menuImage {
+  font-size: 4rem;
+  margin-bottom: 15px;
+}
+
+.menuInfo {
+  margin-bottom: 20px;
+}
+
+.menuName {
+  font-size: 1.6rem;
+  font-weight: bold;
+  color: #2f3542;
+  margin: 0 0 10px 0;
+}
+
+.menuDescription {
+  font-size: 1.1rem;
+  color: #57606f;
+  margin: 0 0 15px 0;
+  line-height: 1.4;
+}
+
+.menuPrice {
+  font-size: 1.4rem;
+  font-weight: bold;
+  color: #FF6B6B;
+  margin: 0;
+}
+
+.addButton {
+  background: linear-gradient(135deg, #4CAF50, #45a049);
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  font-size: 1.2rem;
+  font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.addButton:hover {
+  background: linear-gradient(135deg, #45a049, #3d8b40);
+  transform: translateY(-2px);
+}
+
+/* 주문 내역 */
+.orderSummary {
+  padding: 40px;
+  background: #f8f9fa;
+  border-top: 3px solid #e9ecef;
+}
+
+.orderTitle {
+  font-size: 2.2rem;
+  font-weight: bold;
+  color: #2f3542;
+  margin: 0 0 30px 0;
+  text-align: center;
+}
+
+.orderItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  padding: 20px;
+  margin-bottom: 15px;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  border: 2px solid #e9ecef;
+}
+
+.orderItemInfo {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.orderItemImage {
+  font-size: 2.5rem;
+  margin-right: 20px;
+}
+
+.orderItemDetails {
+  display: flex;
+  flex-direction: column;
+}
+
+.orderItemName {
+  font-size: 1.3rem;
+  font-weight: bold;
+  color: #2f3542;
+  margin-bottom: 5px;
+}
+
+.orderItemPrice {
+  font-size: 1.1rem;
+  color: #57606f;
+}
+
+.quantityControls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin: 0 20px;
+}
+
+.quantityButton {
+  width: 40px;
+  height: 40px;
+  border: 2px solid #4CAF50;
+  background: white;
+  color: #4CAF50;
+  font-size: 1.5rem;
+  font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.quantityButton:hover {
+  background: #4CAF50;
+  color: white;
+}
+
+.quantity {
+  font-size: 1.4rem;
+  font-weight: bold;
+  color: #2f3542;
+  min-width: 30px;
+  text-align: center;
+}
+
+.itemTotal {
+  font-size: 1.3rem;
+  font-weight: bold;
+  color: #FF6B6B;
+  min-width: 120px;
+  text-align: right;
+}
+
+.totalSection {
+  margin-top: 30px;
+  padding: 25px;
+  background: white;
+  border-radius: 15px;
+  border: 3px solid #4CAF50;
+  text-align: center;
+}
+
+.totalPrice {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #2f3542;
+  margin-bottom: 20px;
+}
+
+.orderButton {
+  background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+  color: white;
+  border: none;
+  padding: 18px 40px;
+  font-size: 1.4rem;
+  font-weight: bold;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.orderButton:hover {
+  background: linear-gradient(135deg, #FF8E53, #FF6B6B);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(255, 107, 107, 0.6);
+}
+
+/* 도움말 */
+.helpSection {
+  padding: 40px;
+  background: #e8f5e8;
+  text-align: center;
+}
+
+.helpTitle {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: #2f3542;
+  margin: 0 0 20px 0;
+}
+
+.helpExamples {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.helpExamples p {
+  font-size: 1.2rem;
+  color: #4CAF50;
+  font-weight: 600;
+  margin: 0;
+  padding: 10px 20px;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid #4CAF50;
+  display: inline-block;
+}
+
+/* 아이폰 16 시리즈 최적화 */
+@media (max-width: 430px) {
+
+  /* 아이폰 16 Pro Max: 430px */
+  .voiceOrderScreen {
+    padding: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+  }
+
+  .container {
+    border-radius: 0;
+    min-height: 100vh;
+  }
+
+  .header {
+    padding: 60px 20px 30px 20px;
+    /* 상단 노치 고려 */
+    border-radius: 0;
+  }
+
+  .title {
+    font-size: 2.5rem;
+    margin-bottom: 15px;
+  }
+
+  .storeName {
+    font-size: 1.8rem;
+  }
+
+  .storeAddress {
+    font-size: 1.2rem;
+  }
+
+  .voiceSection {
+    padding: 30px 20px;
+  }
+
+  .voiceButton {
+    width: 140px;
+    height: 140px;
+    font-size: 3.5rem;
+    margin-bottom: 25px;
+  }
+
+  .voiceStatus {
+    font-size: 1.6rem;
+    margin-bottom: 20px;
+  }
+
+  .userInput {
+    font-size: 1.4rem;
+    padding: 18px 20px;
+    border-radius: 15px;
+  }
+
+  .menuSection {
+    padding: 30px 20px;
+  }
+
+  .menuTitle {
+    font-size: 2.4rem;
+    margin-bottom: 25px;
+  }
+
+  .menuGrid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .menuCard {
+    padding: 25px 20px;
+    border-radius: 20px;
+  }
+
+  .menuImage {
+    font-size: 5rem;
+    margin-bottom: 20px;
+  }
+
+  .menuName {
+    font-size: 1.8rem;
+    margin-bottom: 12px;
+  }
+
+  .menuDescription {
+    font-size: 1.3rem;
+    margin-bottom: 18px;
+  }
+
+  .menuPrice {
+    font-size: 1.6rem;
+    margin-bottom: 20px;
+  }
+
+  .addButton {
+    padding: 16px 30px;
+    font-size: 1.4rem;
+    border-radius: 12px;
+  }
+
+  .orderSummary {
+    padding: 30px 20px;
+  }
+
+  .orderTitle {
+    font-size: 2.4rem;
+    margin-bottom: 25px;
+  }
+
+  .orderItem {
+    flex-direction: column;
+    gap: 20px;
+    text-align: center;
+    padding: 25px 20px;
+    border-radius: 15px;
+  }
+
+  .orderItemInfo {
+    justify-content: center;
+  }
+
+  .orderItemImage {
+    font-size: 3rem;
+    margin-right: 15px;
+  }
+
+  .orderItemName {
+    font-size: 1.5rem;
+  }
+
+  .orderItemPrice {
+    font-size: 1.3rem;
+  }
+
+  .quantityControls {
+    margin: 0;
+    gap: 20px;
+  }
+
+  .quantityButton {
+    width: 50px;
+    height: 50px;
+    font-size: 1.8rem;
+    border-radius: 12px;
+  }
+
+  .quantity {
+    font-size: 1.6rem;
+    min-width: 40px;
+  }
+
+  .itemTotal {
+    font-size: 1.5rem;
+    text-align: center;
+  }
+
+  .totalSection {
+    margin-top: 25px;
+    padding: 30px 25px;
+    border-radius: 20px;
+  }
+
+  .totalPrice {
+    font-size: 2.2rem;
+    margin-bottom: 25px;
+  }
+
+  .orderButton {
+    padding: 20px 40px;
+    font-size: 1.6rem;
+    border-radius: 15px;
+    width: 100%;
+  }
+
+  .helpSection {
+    padding: 30px 20px 50px 20px;
+    /* 하단 홈 인디케이터 고려 */
+  }
+
+  .helpTitle {
+    font-size: 2rem;
+    margin-bottom: 20px;
+  }
+
+  .helpExamples {
+    gap: 15px;
+  }
+
+  .helpExamples p {
+    font-size: 1.4rem;
+    padding: 15px 20px;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 393px) {
+
+  /* 아이폰 16 Pro: 393px */
+  .title {
+    font-size: 2.2rem;
+  }
+
+  .voiceButton {
+    width: 120px;
+    height: 120px;
+    font-size: 3rem;
+  }
+
+  .menuTitle,
+  .orderTitle {
+    font-size: 2.2rem;
+  }
+}
+
+@media (max-width: 375px) {
+
+  /* 아이폰 16: 375px */
+  .title {
+    font-size: 2rem;
+  }
+
+  .storeName {
+    font-size: 1.6rem;
+  }
+
+  .voiceButton {
+    width: 110px;
+    height: 110px;
+    font-size: 2.8rem;
+  }
+
+  .menuTitle,
+  .orderTitle {
+    font-size: 2rem;
+  }
+
+  .menuImage {
+    font-size: 4.5rem;
+  }
+
+  .menuName {
+    font-size: 1.6rem;
+  }
+
+  .totalPrice {
+    font-size: 2rem;
+  }
+}
+
+/* 태블릿 */
+@media (max-width: 768px) and (min-width: 431px) {
+  .voiceOrderScreen {
+    padding: 15px;
+  }
+
+  .title {
+    font-size: 2.8rem;
+  }
+
+  .voiceButton {
+    width: 130px;
+    height: 130px;
+    font-size: 3.2rem;
+  }
+
+  .menuGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 안전 영역 고려 (아이폰 노치/홈 인디케이터) */
+@supports (padding: max(0px)) {
+  .header {
+    padding-top: max(60px, env(safe-area-inset-top) + 20px);
+  }
+
+  .helpSection {
+    padding-bottom: max(50px, env(safe-area-inset-bottom) + 30px);
+  }
+}
+
+/* Dark theme refresh inspired by btn btn-dark aesthetics */
+.voiceOrderScreen {
+  background: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
+  color: #e2e8f0;
+}
+
+.container {
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  box-shadow: 0 25px 45px rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(18px);
+}
+
+.header {
+  background: linear-gradient(135deg, #111827, #1f2937);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.title,
+.storeName {
+  color: #f8fafc;
+}
+
+.storeAddress {
+  color: #cbd5f5;
+  opacity: 0.85;
+}
+
+.voiceSection {
+  background: rgba(15, 23, 42, 0.7);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.voiceButton {
+  background: linear-gradient(135deg, #1f2937, #0f172a);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 18px 35px rgba(15, 23, 42, 0.6);
+}
+
+.voiceButton:hover {
+  transform: scale(1.08);
+  background: linear-gradient(135deg, #27344a, #111827);
+  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.7);
+}
+
+.voiceButton:disabled {
+  opacity: 0.4;
+  border-color: rgba(148, 163, 184, 0.1);
+}
+
+.voiceButton.listening {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  box-shadow: 0 20px 40px rgba(37, 99, 235, 0.45);
+}
+
+.voiceStatus {
+  color: #cbd5f5;
+}
+
+.listeningText {
+  color: #60a5fa;
+}
+
+.processing {
+  color: #fbbf24;
+}
+
+.readyText {
+  color: #94a3b8;
+}
+
+.inputLabel {
+  color: #cbd5f5;
+}
+
+.userInput {
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.6);
+}
+
+.userInput:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.25);
+}
+
+.menuSection {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.menuTitle {
+  color: #f8fafc;
+}
+
+.menuCard {
+  background: linear-gradient(135deg, rgba(17, 24, 39, 0.95), rgba(15, 23, 42, 0.85));
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 18px 35px rgba(15, 23, 42, 0.6);
+}
+
+.menuCard:hover {
+  border-color: rgba(96, 165, 250, 0.4);
+  box-shadow: 0 22px 45px rgba(15, 23, 42, 0.75);
+}
+
+.menuName {
+  color: #f8fafc;
+}
+
+.menuDescription {
+  color: #94a3b8;
+}
+
+.menuPrice {
+  color: #60a5fa;
+}
+
+.addButton {
+  background: linear-gradient(135deg, #1f2937, #111827);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.55);
+}
+
+.addButton:hover {
+  background: linear-gradient(135deg, #27344a, #1f2937);
+  box-shadow: 0 15px 35px rgba(15, 23, 42, 0.65);
+}
+
+.orderSummary {
+  background: rgba(15, 23, 42, 0.7);
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.orderTitle {
+  color: #f8fafc;
+}
+
+.orderItem {
+  background: rgba(17, 24, 39, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.55);
+}
+
+.orderItemName {
+  color: #f8fafc;
+}
+
+.orderItemPrice {
+  color: #94a3b8;
+}
+
+.quantityButton {
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.45);
+}
+
+.quantityButton:hover {
+  background: linear-gradient(135deg, #27344a, #1f2937);
+  border-color: rgba(96, 165, 250, 0.45);
+  color: #f8fafc;
+}
+
+.quantity {
+  color: #f8fafc;
+}
+
+.itemTotal {
+  color: #60a5fa;
+}
+
+.totalSection {
+  background: linear-gradient(135deg, rgba(17, 24, 39, 0.92), rgba(24, 33, 56, 0.92));
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.6);
+}
+
+.totalPrice {
+  color: #f8fafc;
+}
+
+.orderButton {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border: 1px solid rgba(37, 99, 235, 0.6);
+  box-shadow: 0 18px 40px rgba(37, 99, 235, 0.4);
+}
+
+.orderButton:hover {
+  background: linear-gradient(135deg, #1e3a8a, #2563eb);
+  box-shadow: 0 22px 45px rgba(30, 64, 175, 0.45);
+}
+
+.helpSection {
+  background: rgba(11, 17, 29, 0.85);
+}
+
+.helpTitle {
+  color: #f8fafc;
+}
+
+.helpExamples p {
+  background: rgba(17, 24, 39, 0.88);
+  color: #e0e7ff;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.4);
+}

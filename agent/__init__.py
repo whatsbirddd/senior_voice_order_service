@@ -5,7 +5,7 @@ from pathlib import Path
 try:  # Support both `voice_mvp` package and flat module execution
     from voice_mvp.backend import MenuCatalog, RecommendationEngine, ReviewService  # type: ignore[import-not-found]
 except ModuleNotFoundError:  # pragma: no cover
-    from backend import MenuCatalog, RecommendationEngine, ReviewService
+    from fastapi_app import MenuCatalog, RecommendationEngine, ReviewService
 
 from .core import VoiceOrderAgent
 from .memory import Memory

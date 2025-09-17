@@ -36,7 +36,7 @@ export function OrderCompleteScreen({ orderNumber, onStartOver }: OrderCompleteS
         </div>
 
         {/* 예상 시간 카드 */}
-        <div className="bg-card rounded-3xl p-6 mb-6 text-center">
+        <div className="card text-center">
           <p className="text-lg text-muted-foreground mb-2">예상 준비 시간</p>
           <p className="text-3xl text-card-foreground">15-20분</p>
         </div>
@@ -44,7 +44,7 @@ export function OrderCompleteScreen({ orderNumber, onStartOver }: OrderCompleteS
         {/* 새로 주문하기 버튼 */}
         <button
           onClick={onStartOver}
-          className="w-full bg-white text-black py-4 rounded-2xl text-xl hover:bg-gray-100 active:scale-[0.98] transition-all duration-200"
+          className="btn btn-light w-full"
         >
           새로 주문하기
         </button>
@@ -52,3 +52,4 @@ export function OrderCompleteScreen({ orderNumber, onStartOver }: OrderCompleteS
     </div>
   );
 }
+

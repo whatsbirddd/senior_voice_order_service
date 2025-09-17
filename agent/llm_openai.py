@@ -157,8 +157,11 @@ def _parse_azure_endpoint(url: str) -> Tuple[Optional[str], Optional[str], Optio
     base_path = "/".join(base_segments)
     base = f"{parsed.scheme}://{parsed.netloc}"
     if base_path:
-        base = f"{base}/{base_path}"
-    if base and not base.endswith("/"):
+        # Azure endpoints typically use https://{resource}.openai.azure.com/openai/deployments/...
+        # The SDK expects azure_endpoint without the trailing /openai segment.
+        if base_path.lower() != "openai":
+            base = f"{base}/{base_path}"
+    if not base.endswith("/"):
         base = base + "/"
     query = parse_qs(parsed.query or "")
     api_version = (query.get("api-version") or [None])[0]

@@ -1,6 +1,8 @@
 'use client';
 
+import { chatWithAgent, transcribeAudio, generateSessionId, AgentResponse } from '../lib/agent';
 import React, { useState, useEffect, useRef } from 'react';
+import styles from './VoiceOrderScreen.module.css';
 
 interface MenuItem {
   id: string;
@@ -18,10 +20,11 @@ interface OrderItem {
 }
 
 interface VoiceOrderScreenProps {
-  onOrderComplete: (orderItems: OrderItem[], totalAmount: number) => void;
+  onOrderComplete: (orderNumber: string) => void;
 }
 
 const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) => {
+  const [sessionId] = useState(() => generateSessionId());
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
@@ -30,6 +33,12 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
   const [currentStep, setCurrentStep] = useState<'store' | 'menu' | 'order' | 'confirm'>('store');
   const [isProcessing, setIsProcessing] = useState(false);
   const recognitionRef = useRef<any>(null);
+
+  // ★ Agent 대화 상태(시니어 친화 안내)
+  const [agentMessages, setAgentMessages] = useState<{ role: 'assistant' | 'user'; content: string }[]>([
+    { role: 'assistant', content: '안녕하세요. 옥소반 마곡본점이에요. 메뉴 추천 도와드릴까요?' },
+  ]);
+  const [agentLoading, setAgentLoading] = useState(false);
 
   // 시니어 친화적 메뉴 데이터
   const sampleMenuItems: MenuItem[] = [
@@ -44,6 +53,55 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
   useEffect(() => {
     setMenuItems(sampleMenuItems);
   }, []);
+
+  // ★ Agent 호출(내부적으로 chatWithAgent 사용)
+  // const askAgent = async (prompt: string) => {
+  //   try {
+  //     setAgentLoading(true);
+  //     setAgentMessages((m) => [...m, { role: 'user', content: prompt }]);
+  //     const res: AgentResponse | any = await chatWithAgent({
+  //       sessionId,
+  //       store: selectedStore,
+  //       message: prompt,
+  //     });
+  //     const reply = (res && (res.reply || res.message || res.text)) ?? '안내를 불러오지 못했어요. 잠시 뒤 다시 시도해주세요.';
+  //     setAgentMessages((m) => [...m, { role: 'assistant', content: reply }]);
+  //   } catch {
+  //     setAgentMessages((m) => [...m, { role: 'assistant', content: '지금은 안내가 어려워요. 잠시 뒤 다시 시도해주세요.' }]);
+  //   } finally {
+  //     setAgentLoading(false);
+  //   }
+  // };
+  // ★ Agent 호출(내부적으로 chatWithAgent 사용)
+  const askAgent = async (prompt: string) => {
+    try {
+      setAgentLoading(true);
+      setAgentMessages((m) => [...m, { role: 'user', content: prompt }]);
+
+      // ✅ message → prompt 로 변경
+      const res: AgentResponse | any = await chatWithAgent({ store: selectedStore, prompt });
+
+      // ✅ 다양한 응답 타입 대비 + 콘솔로그로 디버깅
+      console.log('[chatWithAgent][res]:', res);
+      const reply =
+        (typeof res === 'string' && res) ||
+        res?.reply ||
+        res?.message ||   // 서버가 message로 줄 수도 있으니 fallback은 유지
+        res?.text ||
+        '안내를 불러오지 못했어요. 잠시 뒤 다시 시도해주세요.';
+
+      setAgentMessages((m) => [...m, { role: 'assistant', content: reply }]);
+    } catch (e) {
+      console.error('[chatWithAgent][error]:', e); // ✅ 에러 내용을 확인
+      setAgentMessages((m) => [
+        ...m,
+        { role: 'assistant', content: '지금은 안내가 어려워요. 잠시 뒤 다시 시도해주세요.' },
+      ]);
+    } finally {
+      setAgentLoading(false);
+    }
+  };
+
 
   const startListening = () => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -93,24 +151,34 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
     setIsListening(false);
   };
 
+  // ★ 음성 명령: store(소개) 단계와 menu(주문) 단계 모두 처리
   const processVoiceCommand = (command: string) => {
     setIsProcessing(true);
-    
-    // 간단한 음성 명령 처리
-    const lowerCommand = command.toLowerCase();
-    
+    const lower = command.toLowerCase().trim();
+
+    // 소개 화면에서의 명령
+    if (currentStep === 'store') {
+      {
+        askAgent(`요청: ${command}`);
+      }
+    }
+
+    // 메뉴 선택 화면에서의 명령(기존 로직 유지)
     if (currentStep === 'menu') {
-      // 메뉴 주문 처리
       menuItems.forEach(item => {
-        if (lowerCommand.includes(item.name)) {
+        if (lower.includes(item.name.toLowerCase())) {
           addToOrder(item);
         }
       });
+      if (/주문(하기)?|결제/.test(lower) && orderItems.length > 0) {
+        handleOrderComplete();
+      }
+      if (/뒤로|매장/.test(lower)) {
+        setCurrentStep('store');
+      }
     }
-    
-    setTimeout(() => {
-      setIsProcessing(false);
-    }, 1000);
+
+    setTimeout(() => setIsProcessing(false), 800);
   };
 
   const addToOrder = (menuItem: MenuItem) => {
@@ -154,160 +222,170 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
 
   const handleOrderComplete = () => {
     if (orderItems.length > 0) {
-      onOrderComplete(orderItems, getTotalAmount());
+      const orderNumber = `ORDER-${Date.now()}`; onOrderComplete(orderNumber);
     }
   };
 
-  const renderStoreSelection = () => (
-    <div className="animate-fade-in">
-      <div className="text-center mb-8">
-        <h1 className="text-large mb-4 text-gray-900">매장을 선택해주세요</h1>
-        <p className="text-regular text-gray-600">음성으로 말씀하시거나 터치해주세요</p>
-      </div>
-      
-      <div className="space-y-4 mb-8">
-        {['옥소반 마곡본점', '옥소반 강남점', '옥소반 홍대점'].map((store) => (
-          <button
-            key={store}
-            onClick={() => {
-              setSelectedStore(store);
-              setCurrentStep('menu');
-            }}
-            className={`w-full card-hover p-6 rounded-2xl border-3 text-left ${
-              selectedStore === store 
-                ? 'border-orange-400 bg-orange-50' 
-                : 'border-gray-200 bg-white'
-            }`}
-          >
-            <div className="text-medium font-bold text-gray-900">{store}</div>
-            <div className="text-regular text-gray-600 mt-2">영업시간: 11:00 - 22:00</div>
-          </button>
-        ))}
-      </div>
+  // ★ 새 소개 화면 렌더러(훅 사용 없음)
+  // ★ 새 소개 화면 렌더러(훅 사용 없음)
+  const renderStoreIntro = () => {
+    return (
+      <div className={styles.animateFadeIn}>
+        <div className={styles.sectionHeader}>
+          <h1 className={styles.sectionTitle}>옥소반 마곡본점</h1>
+          <p className={styles.sectionSubtitle}>어서 오세요</p>
+        </div>
 
-      <div className="text-center">
-        <button
-          onClick={isListening ? stopListening : startListening}
-          className={`voice-button ${isListening ? 'recording' : ''}`}
-          disabled={isProcessing}
-        >
-          {isListening ? '🎤' : '🗣️'}
-        </button>
-        <p className="text-regular text-gray-600 mt-4">
-          {isListening ? '듣고 있습니다...' : '음성으로 매장 선택하기'}
-        </p>
+        <div className={styles.infoCard}>
+          <button
+            className={styles.primaryButton}
+            onClick={() => askAgent('이 가게의 대표 메뉴와 추천 메뉴에 대해 자세히 설명해주세요')}
+            disabled={agentLoading}
+          >
+            {agentLoading ? '메뉴 정보 불러오는 중...' : '추천 메뉴'}
+          </button>
+        </div>
+
+        {agentMessages.length > 1 && (
+          <div className={styles.agentChat}>
+            {agentMessages.slice(1).map((m, idx) => (
+              <div
+                key={idx}
+                className={m.role === 'assistant' ? styles.chatBubbleAssistant : styles.chatBubbleUser}
+              >
+                {m.content}
+              </div>
+            ))}
+            {agentLoading && <div className={styles.chatBubbleAssistant}>잠시만 기다려주세요…</div>}
+          </div>
+        )}
+
+        <div className={styles.voiceBlock}>
+          <button
+            onClick={isListening ? stopListening : startListening}
+            className={[styles.voiceButton, isListening ? styles.recording : ''].filter(Boolean).join(' ')}
+            disabled={isProcessing || agentLoading}
+          >
+            {isListening ? '🎤' : '🗣️'}
+          </button>
+          <p className={styles.voiceHint}>
+            {isListening ? '듣고 있어요…' : '말씀해 보세요 (예: "메뉴 추천")'}
+          </p>
+          {transcript && <p className={styles.transcript}>"{transcript}"</p>}
+        </div>
+
+        <div className={styles.ctaBar}>
+          <button className={styles.primaryButton} onClick={() => setCurrentStep('menu')}>
+            메뉴 정보 확인하기
+          </button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderMenuSelection = () => (
-    <div className="animate-fade-in">
-      <div className="text-center mb-6">
-        <h1 className="text-large mb-2 text-gray-900">메뉴를 선택해주세요</h1>
-        <p className="text-regular text-gray-600">{selectedStore}</p>
+    <div className={styles.animateFadeIn}>
+      <div className={styles.sectionHeader}>
+        <h1 className={styles.sectionTitle}>메뉴를 선택해주세요</h1>
+        <p className={styles.sectionSubtitle}>{selectedStore}</p>
       </div>
 
-      <div className="grid gap-4 mb-6">
+      <div className={styles.menuList}>
         {menuItems.map((item) => (
           <button
             key={item.id}
             onClick={() => addToOrder(item)}
-            className="menu-item text-left"
+            className={styles.menuItem}
           >
-            <div className="flex justify-between items-start">
-              <div className="flex-1">
-                <h3 className="text-medium font-bold text-gray-900 mb-2">{item.name}</h3>
-                <p className="text-regular text-gray-600 mb-3">{item.description}</p>
-                <p className="text-medium font-bold text-orange-600">
-                  {item.price.toLocaleString()}원
-                </p>
-              </div>
-              <div className="ml-4 text-4xl">🍽️</div>
+            <div>
+              <h3 className={styles.menuHeading}>{item.name}</h3>
+              <p className={styles.menuDescription}>{item.description}</p>
+              <p className={styles.menuPrice}>{item.price.toLocaleString()}원</p>
             </div>
+            <div className={styles.menuEmoji}>🍽️</div>
           </button>
         ))}
       </div>
 
       {orderItems.length > 0 && (
-        <div className="card mb-6 bg-orange-50 border-orange-200">
-          <h3 className="text-medium font-bold text-gray-900 mb-4">주문 내역</h3>
+        <div className={styles.summaryCard}>
+          <h3 className={styles.summaryTitle}>주문 내역</h3>
           {orderItems.map((item) => (
-            <div key={item.id} className="flex justify-between items-center mb-3 last:mb-0">
-              <div className="flex-1">
-                <span className="text-regular font-semibold text-gray-900">{item.name}</span>
-                <span className="text-regular text-gray-600 ml-2">x{item.quantity}</span>
+            <div key={item.id} className={styles.summaryItem}>
+              <div className={styles.summaryInfo}>
+                <span>{item.name}</span>
+                <span>×{item.quantity}</span>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-regular font-bold text-orange-600">
+              <div className={styles.summaryInfo}>
+                <span className={styles.summaryPrice}>
                   {(item.price * item.quantity).toLocaleString()}원
                 </span>
                 <button
                   onClick={() => removeFromOrder(item.id)}
-                  className="w-8 h-8 rounded-full bg-red-500 text-white text-sm font-bold"
+                  className={styles.removeButton}
                 >
                   -
                 </button>
               </div>
             </div>
           ))}
-          <div className="border-t-2 border-orange-200 pt-4 mt-4">
-            <div className="flex justify-between items-center">
-              <span className="text-medium font-bold text-gray-900">총 금액</span>
-              <span className="text-large font-bold text-orange-600">
-                {getTotalAmount().toLocaleString()}원
-              </span>
-            </div>
+          <div className={styles.summaryDivider} />
+          <div className={styles.summaryTotalRow}>
+            <span className={styles.summaryTotalLabel}>총 금액</span>
+            <span className={styles.summaryTotalValue}>
+              {getTotalAmount().toLocaleString()}원
+            </span>
           </div>
         </div>
       )}
 
-      <div className="space-y-4">
-        <div className="text-center">
-          <button
-            onClick={isListening ? stopListening : startListening}
-            className={`voice-button ${isListening ? 'recording' : ''}`}
-            disabled={isProcessing}
-          >
-            {isListening ? '🎤' : '🗣️'}
-          </button>
-          <p className="text-regular text-gray-600 mt-4">
-            {isListening ? '주문을 듣고 있습니다...' : '음성으로 주문하기'}
+      <div className={styles.voiceBlock}>
+        <button
+          onClick={isListening ? stopListening : startListening}
+          className={[styles.voiceButton, isListening ? styles.recording : ''].filter(Boolean).join(' ')}
+          disabled={isProcessing}
+        >
+          {isListening ? '🎤' : '🗣️'}
+        </button>
+        <p className={styles.voiceHint}>
+          {isListening ? '주문을 듣고 있습니다...' : '음성으로 주문하기'}
+        </p>
+        {transcript && (
+          <p className={styles.transcript}>
+            "{transcript}"
           </p>
-          {transcript && (
-            <p className="text-regular text-orange-600 mt-2 font-semibold">
-              "{transcript}"
-            </p>
-          )}
-        </div>
+        )}
+      </div>
 
+      <div className={styles.actions}>
         {orderItems.length > 0 && (
           <button
             onClick={handleOrderComplete}
-            className="btn-primary w-full"
+            className="btn btn-primary"
           >
             <span>주문하기</span>
-            <span className="text-xl">🛒</span>
+            <span role="img" aria-hidden="true" className={styles.orderButtonIcon}>🛒</span>
           </button>
         )}
 
         <button
           onClick={() => setCurrentStep('store')}
-          className="btn-secondary w-full"
+          className="btn btn-dark"
         >
-          <span>매장 다시 선택</span>
+          매장 소개로 돌아가기
         </button>
       </div>
     </div>
   );
 
   return (
-    <div className="mobile-shell">
-      <div className="p-6 min-h-screen bg-gray-50">
-        {currentStep === 'store' && renderStoreSelection()}
+    <div className={styles.mobileShell}>
+      <div className={styles.inner}>
+        {/* ★ 기존 renderStoreSelection() → 새 소개 화면 */}
+        {currentStep === 'store' && renderStoreIntro()}
         {currentStep === 'menu' && renderMenuSelection()}
       </div>
     </div>
   );
 };
-
 export default VoiceOrderScreen;

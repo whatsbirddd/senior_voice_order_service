@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}"
+self.__REACT_LOADABLE_MANIFEST="{\"app/page.tsx -> ../components/VoiceOrderScreen\":{\"id\":\"app/page.tsx -> ../components/VoiceOrderScreen\",\"files\":[\"static/css/_app-pages-browser_components_VoiceOrderScreen_tsx.css\",\"static/chunks/_app-pages-browser_components_VoiceOrderScreen_tsx.js\"]}}"

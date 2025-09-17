@@ -17,31 +17,24 @@ _ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 def _load_env_file() -> None:
     if not _ENV_PATH.exists():
         return
-    try:
-        for raw in _ENV_PATH.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            if key and key not in os.environ:
-                os.environ[key.strip()] = value.strip()
-    except Exception:
-        pass
+# Import from local modules
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 
+from agent import VoiceOrderAgent, build_agent
+from fastapi_app.speech import AzureSpeechService
+from fastapi_app.menus import MenuItem
+from agent.llm_openai import AzureAudioTranscriber
+# Import from local modules
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
 
-_load_env_file()
-
-try:  # Allow running both as package and as flat module
-    from voice_mvp.agent import VoiceOrderAgent, build_agent  # type: ignore[import-not-found]
-    from voice_mvp.backend import AzureSpeechService, MenuItem  # type: ignore[import-not-found]
-    from voice_mvp.agent.llm_openai import AzureAudioTranscriber  # type: ignore[import-not-found]
-except ModuleNotFoundError:  # pragma: no cover - fallback for local scripts
-    from agent import VoiceOrderAgent, build_agent
-    from backend import AzureSpeechService, MenuItem
-    from agent.llm_openai import AzureAudioTranscriber
-
+from agent import VoiceOrderAgent, build_agent
+from fastapi_app.speech import AzureSpeechService
+from fastapi_app.menus import MenuItem
+from agent.llm_openai import AzureAudioTranscriber
 
 app = FastAPI(title="Senior Voice Agent API", version="2.0.0")
 app.add_middleware(

@@ -11,14 +11,14 @@ try:
         ReviewService,
     )
 except ModuleNotFoundError:  # pragma: no cover - fallback when running flat
-    from backend import (
+    from fastapi_app import (
         ConversationStage,
         MenuCatalog,
         RecommendationEngine,
         ReviewService,
     )
 
-from .config import default_prompt
+from .prompt import default_prompt
 from .memory import Memory
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -42,12 +42,6 @@ KOREAN_NUMBER_WORDS = {
     "열": 10,
 }
 
-CONFIRM_WORDS = {"네", "예", "맞아요", "맞아", "좋아요", "해주세요", "주문", "확인"}
-CANCEL_WORDS = {"아니", "취소", "다른", "변경"}
-THANKS_WORDS = {"고마", "감사"}
-RECOMMEND_WORDS = {"추천", "뭐가", "먹을까", "골라", "인기", "메뉴 좀"}
-INTRO_WORDS = {"소개", "가게", "설명", "어떤 곳"}
-REVIEW_WORDS = {"후기", "리뷰", "평점"}
 
 
 class VoiceOrderAgent:
@@ -78,19 +72,21 @@ class VoiceOrderAgent:
         selected_names: Optional[List[str]] = None,
         profile: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        """LLM 기반 대화 처리 - 모든 로직을 LLM에 위임"""
         session = self.memory.get_session(session_id)
         if profile:
             session.profile = profile
         cleaned = (message or "").strip()
         session.remember_user(cleaned)
 
+        # 가게 정보 설정
         if store:
             session.store = store.strip()
-        else:
-            guessed_store = self._guess_store(cleaned)
-            if guessed_store:
-                session.store = guessed_store
+        elif not session.store:
+            # 기본 매장으로 옥소반 마곡본점 고정
+            session.store = "옥소반 마곡본점"
 
+        # selected_names 처리 (프론트엔드에서 메뉴 선택한 경우)
         if selected_names:
             for name in selected_names:
                 match = self.catalog.find(session.store, name) if session.store else None
@@ -98,111 +94,127 @@ class VoiceOrderAgent:
                     session.selected_menu = match.name
                     session.stage = ConversationStage.AWAIT_QUANTITY
 
+        # LLM이 사용 가능한 경우 모든 처리를 LLM에 위임
+        if self.llm and getattr(self.llm, "available", False):
+            try:
+                llm_response = self._handle_with_llm(session, cleaned)
+                if llm_response:
+                    return llm_response
+            except Exception as e:
+                # LLM 실패 시 기본 응답
+                return self._respond(
+                    session, 
+                    "죄송합니다. 잠시 문제가 있었습니다. 다시 말씀해 주세요.", 
+                    {"store": session.store or ""}, 
+                    []
+                )
+
+        # LLM이 없는 경우 기본 응답
         if not session.store:
-            session.stage = ConversationStage.NEED_STORE
             reply = "어느 가게에서 주문을 도와드릴까요? 가게 이름을 말씀해 주세요."
             return self._respond(session, reply, {}, [])
+        
+        return self._respond(
+            session, 
+            "안녕하세요! 주문을 도와드리겠습니다. 무엇을 드시고 싶으신가요?", 
+            {"store": session.store}, 
+            []
+        )
+    def _handle_with_llm(self, session: Any, cleaned_message: str) -> Optional[Dict[str, Any]]:
+        if not self.llm or not getattr(self.llm, "available", False):
+            return None
 
-        intents = self._parse_intents(cleaned, session)
-        ui: Dict[str, Any] = {"store": session.store}
-        actions: List[Dict[str, Any]] = []
+        import json
 
-        if intents.get("thanks"):
-            reply = "도움이 되어 기뻐요. 더 필요하신 게 있으면 말씀해 주세요."
-            return self._respond(session, reply, ui, actions)
+        history_messages: List[Dict[str, str]] = []
+        for turn in (session.history or [])[-6:]:
+            role = turn.get("role", "user")
+            content = turn.get("message", "")
+            if content:
+                history_messages.append({"role": role, "content": content})
 
-        if intents.get("cancel") and session.stage in {
-            ConversationStage.AWAIT_CONFIRMATION,
-            ConversationStage.AWAIT_MENU_CHOICE,
-        }:
-            session.selected_menu = None
-            session.quantity = None
-            session.stage = ConversationStage.AWAIT_MENU_CHOICE
-            reply = "알겠습니다. 다른 메뉴를 다시 추천해 드릴까요?"
-            return self._respond(session, reply, ui, actions)
+        context_parts = []
+        if session.store:
+            context_parts.append(f"매장: {session.store}")
+        context_parts.append(f"단계: {session.stage.value}")
+        if session.selected_menu:
+            context_parts.append(f"선택 메뉴: {session.selected_menu}")
+        if session.quantity:
+            context_parts.append(f"수량: {session.quantity}")
+        if session.recommendations:
+            context_parts.append("추천 후보: " + ", ".join(session.recommendations[:3]))
 
-        review_bundle = self.reviews.get(session.store)
-        menu_items = self.catalog.list(session.store)
+        state_summary = " | ".join(context_parts)
+        user_message = cleaned_message
+        if state_summary:
+            user_message += f"\n\n현재 상태: {state_summary}"
 
-        if session.stage == ConversationStage.NEED_STORE:
-            session.stage = ConversationStage.AWAIT_RECOMMENDATION
-            ui["reviews"] = review_bundle.to_api()
-            if menu_items:
-                ui["menu"] = [item.to_api() for item in menu_items]
-            reply = self._intro_message(session.store, review_bundle.summary)
-            return self._respond(session, reply, ui, actions)
+        messages: List[Dict[str, str]] = [
+            {"role": "system", "content": self.prompt},
+        ]
+        messages.extend(history_messages)
+        messages.append({"role": "user", "content": user_message})
 
-        if intents.get("introduction"):
-            session.stage = ConversationStage.AWAIT_RECOMMENDATION
-            ui["reviews"] = review_bundle.to_api()
-            reply = self._intro_message(session.store, review_bundle.summary)
-            return self._respond(session, reply, ui, actions)
+        llm_reply = self.llm.chat(messages)
+        content = (llm_reply or {}).get("content") if isinstance(llm_reply, dict) else None
+        if not content:
+            return None
 
-        if intents.get("reviews"):
-            ui["reviews"] = review_bundle.to_api()
-            reply = review_bundle.summary
-            if review_bundle.highlights:
-                reply += " " + " ".join(review_bundle.highlights[:2])
-            session.stage = ConversationStage.AWAIT_RECOMMENDATION
-            return self._respond(session, reply, ui, actions)
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.strip("`\n")
+            if "{" in content:
+                content = content[content.find("{") : content.rfind("}") + 1]
 
-        if intents.get("recommend") or session.stage == ConversationStage.AWAIT_RECOMMENDATION:
-            recos = self.recommender.recommend(session.store, session.profile)
-            session.recommendations = [item.name for item in recos]
-            if recos:
-                ui["recommendations"] = [item.to_api() for item in recos]
-                reply = self._recommend_message(recos)
-                session.stage = ConversationStage.AWAIT_MENU_CHOICE
-                return self._respond(session, reply, ui, actions)
-            session.stage = ConversationStage.AWAIT_MENU_CHOICE
+        try:
+            parsed = json.loads(content)
+        except Exception:
+            return None
 
-        explain_target = intents.get("explain")
-        if explain_target and session.store:
-            item = self.catalog.find(session.store, explain_target)
-            if item:
-                ui["menu"] = [item.to_api()]
-                reply = self._explain_message(item)
-                return self._respond(session, reply, ui, actions)
+        speak = str(parsed.get("speak") or "무엇을 도와드릴까요?")
+        actions = parsed.get("actions")
+        if not isinstance(actions, list):
+            actions = []
+        memory_patch = parsed.get("memory")
+        if isinstance(memory_patch, dict):
+            self._apply_memory_patch(session, memory_patch)
 
-        menu_choice = intents.get("menu_choice")
-        if menu_choice:
-            item = self.catalog.find(session.store, menu_choice)
-            if item:
-                session.selected_menu = item.name
-                session.stage = ConversationStage.AWAIT_QUANTITY
-                ui.setdefault("menu", [item.to_api()])
-                reply = f"{item.name}을 고르셨네요. 몇 개 준비해 드릴까요?"
-                return self._respond(session, reply, ui, actions)
+        session.remember_agent(speak)
+        return {
+            "reply": speak,
+            "ui": {"store": session.store},
+            "actions": actions,
+            "state": session.as_state(),
+        }
 
-        if session.stage == ConversationStage.AWAIT_MENU_CHOICE and not session.selected_menu:
-            reply = "괜찮아 보이는 메뉴가 있으시면 메뉴 이름을 말씀해 주세요."
-            return self._respond(session, reply, ui, actions)
+    def _apply_memory_patch(self, session: Any, patch: Dict[str, Any]) -> None:
+        store = patch.get("store")
+        if isinstance(store, str) and store.strip():
+            session.store = store.strip()
 
-        quantity = intents.get("quantity")
-        if quantity and session.selected_menu:
-            session.quantity = quantity
-            session.stage = ConversationStage.AWAIT_CONFIRMATION
-            reply = f"{session.selected_menu} {quantity}개로 도와드릴까요? 확인해 주세요."
-            return self._respond(session, reply, ui, actions)
+        stage = patch.get("stage")
+        if isinstance(stage, str):
+            try:
+                session.stage = ConversationStage(stage)
+            except ValueError:
+                pass
 
-        if session.stage == ConversationStage.AWAIT_QUANTITY and session.selected_menu:
-            reply = "필요하신 수량을 숫자로 말씀해 주세요."
-            return self._respond(session, reply, ui, actions)
+        selected = patch.get("selected_menu") or patch.get("selectedMenu")
+        if isinstance(selected, str) and selected:
+            session.selected_menu = selected
 
-        if intents.get("confirm") and session.stage == ConversationStage.AWAIT_CONFIRMATION:
-            reply, ui_update = self._complete_order(session)
-            ui.update(ui_update)
-            actions.append({"type": "ORDER"})
-            return self._respond(session, reply, ui, actions)
+        qty = patch.get("quantity") or patch.get("qty")
+        if isinstance(qty, int):
+            session.quantity = qty
 
-        if session.stage == ConversationStage.AWAIT_CONFIRMATION:
-            reply = "괜찮으시면 '네'라고 답해 주시면 주문을 마칠게요."
-            return self._respond(session, reply, ui, actions)
+        recos = patch.get("recommendations")
+        if isinstance(recos, list):
+            session.recommendations = [str(r) for r in recos if isinstance(r, str)]
 
-        reply = "필요하신 메뉴나 도움이 있다면 편하게 말씀해 주세요."
-        return self._respond(session, reply, ui, actions)
+        profile = patch.get("profile")
+        if isinstance(profile, dict):
+            session.profile.update(profile)
 
-    # ------------------------------------------------------------------
     def _respond(
         self,
         session: Any,
@@ -258,36 +270,6 @@ class VoiceOrderAgent:
         return content.strip() if isinstance(content, str) and content.strip() else raw_reply
 
     # ------------------------------------------------------------------
-    def _parse_intents(self, message: str, session: Any) -> Dict[str, Any]:
-        lower = message.lower()
-        compact = lower.replace(" ", "")
-        intents: Dict[str, Any] = {}
-        if any(word in message for word in INTRO_WORDS):
-            intents["introduction"] = True
-        if any(word in message for word in RECOMMEND_WORDS):
-            intents["recommend"] = True
-        if any(word in message for word in REVIEW_WORDS):
-            intents["reviews"] = True
-        if any(word in message for word in THANKS_WORDS):
-            intents["thanks"] = True
-        if any(word in message for word in CANCEL_WORDS):
-            intents["cancel"] = True
-        if any(word in message for word in CONFIRM_WORDS):
-            intents["confirm"] = True
-
-        quantity = self._extract_quantity(message)
-        if quantity:
-            intents["quantity"] = quantity
-
-        if "설명" in message or "어떤" in message:
-            intents["explain"] = self._match_menu_name(message, session.store)
-
-        menu_choice = self._match_menu_name(message, session.store)
-        if menu_choice:
-            intents["menu_choice"] = menu_choice
-
-        return intents
-
     def _extract_quantity(self, message: str) -> Optional[int]:
         match = re.search(r"(\d+)", message)
         if match:

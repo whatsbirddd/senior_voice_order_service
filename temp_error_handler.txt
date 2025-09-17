@@ -1,0 +1,28 @@
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('음성 인식 오류:', event.error);
+        let errorMessage = '음성 인식 중 오류가 발생했습니다.';
+        
+        switch (event.error) {
+          case 'network':
+            errorMessage = '네트워크 연결을 확인해주세요. HTTPS 환경에서 사용해주세요.';
+            break;
+          case 'not-allowed':
+            errorMessage = '마이크 권한을 허용해주세요.';
+            break;
+          case 'no-speech':
+            errorMessage = '음성이 감지되지 않았습니다. 다시 시도해주세요.';
+            break;
+          case 'audio-capture':
+            errorMessage = '마이크에 접근할 수 없습니다.';
+            break;
+          case 'service-not-allowed':
+            errorMessage = '음성 인식 서비스를 사용할 수 없습니다.';
+            break;
+          default:
+            errorMessage = \`음성 인식 오류: \${event.error}\`;
+        }
+        
+        alert(errorMessage);
+        setIsListening(false);
+        setIsProcessing(false);
+      };

@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 try:
     from voice_mvp.backend import OrderSession  # type: ignore[import-not-found]
 except ModuleNotFoundError:  # pragma: no cover
-    from backend import OrderSession
+    from fastapi_app import OrderSession
 
 
 class Memory:

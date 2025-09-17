@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react'
+import { generateSessionId } from '../lib/agent'
 
 interface Message {
   id: string
@@ -18,9 +19,10 @@ export default function AgentChat() {
       id: '1',
       content: '안녕하세요! 저는 말 걸면 다 해주는 점원 Agent입니다. 메뉴에 대해 궁금한 것이 있으시면 언제든 말씀해 주세요! 🍽️',
       sender: 'agent',
-      timestamp: new Date("2025-01-16T10:00:00")
+      timestamp: new Date()
     }
   ])
+  const [sessionId] = useState(() => generateSessionId())
   const [inputText, setInputText] = useState('')
   const [isListening, setIsListening] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -34,38 +36,6 @@ export default function AgentChat() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
-
-  const searchMenuRecommendations = async (query: string) => {
-    try {
-      const response = await fetch('/api/search-menu', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
-      })
-      if (!response.ok) throw new Error('검색 실패')
-      const data = await response.json()
-      return data.recommendations || []
-    } catch (error) {
-      console.error('메뉴 검색 오류:', error)
-      return []
-    }
-  }
-
-  const getNaverMenuInfo = async (menuName: string) => {
-    try {
-      const response = await fetch('/api/naver-menu-info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ menu_name: menuName }),
-      })
-      if (!response.ok) throw new Error('메뉴 정보 조회 실패')
-      const data = await response.json()
-      return data
-    } catch (error) {
-      console.error('네이버 메뉴 정보 조회 오류:', error)
-      return null
-    }
-  }
 
   const processSamsungPay = async (amount: number, orderNumber: string) => {
     try {
@@ -103,53 +73,54 @@ export default function AgentChat() {
     setIsLoading(true)
     
     try {
-      let response = ''
+      // 백엔드 agent API 호출
+      const agentRequest = {
+        sessionId: sessionId,
+        message: userMessage,
+        store: "옥소반",
+        selectedNames: [],
+        profile: {
+          ageGroup: "senior",
+          allergies: [],
+          diseases: [],
+          prefers: [],
+          dislikes: []
+        }
+      }
+
+      const response = await fetch('/api/agent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(agentRequest),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Agent API error: ${response.status}`)
+      }
+
+      const agentResponse = await response.json()
+      
+      // 응답에서 필요한 정보 추출
       let menuInfo = null
       let paymentInfo = null
       let qrCode = null
 
-      if (userMessage.includes('추천') || userMessage.includes('뭐가 맛있') || userMessage.includes('인기')) {
-        const recommendations = await searchMenuRecommendations(userMessage)
-        if (recommendations.length > 0) {
-          response = `추천 메뉴를 찾아드렸습니다! 다음 메뉴들이 인기가 많아요:\n\n${recommendations.map((item: any, index: number) => `${index + 1}. ${item.name} - ${item.description}`).join('\n')}`
-        } else {
-          response = '죄송합니다. 현재 추천할 수 있는 메뉴 정보를 찾을 수 없습니다.'
-        }
-      }
-      else if (userMessage.includes('설명') || userMessage.includes('어떤') || userMessage.includes('뭐야')) {
-        const menuKeywords = ['김치찌개', '된장찌개', '불고기', '비빔밥', '냉면', '삼겹살', '갈비', '치킨', '피자', '파스타']
-        const foundMenu = menuKeywords.find(menu => userMessage.includes(menu))
-        
-        if (foundMenu) {
-          menuInfo = await getNaverMenuInfo(foundMenu)
-          if (menuInfo && menuInfo.success) {
-            response = `${foundMenu}에 대해 설명드릴게요!\n\n${menuInfo.description}\n\n가격: ${menuInfo.price || '문의 바랍니다'}\n평점: ${menuInfo.rating || 'N/A'}/5`
-          } else {
-            response = `${foundMenu}는 맛있는 한국 전통 요리입니다. 자세한 정보는 직원에게 문의해 주세요!`
-          }
-        } else {
-          response = '어떤 메뉴에 대해 알고 싶으신가요? 구체적인 메뉴명을 말씀해 주시면 자세히 설명드릴게요!'
-        }
-      }
-      else if (userMessage.includes('결제') || userMessage.includes('계산') || userMessage.includes('삼성페이')) {
+      // 결제 관련 액션이 필요한 경우
+      if (agentResponse.stage === 'payment' || agentResponse.total_amount) {
         const orderNumber = `ORDER-${Date.now()}`
-        const amount = 15000
+        const amount = agentResponse.total_amount || 15000
         
         paymentInfo = await processSamsungPay(amount, orderNumber)
         if (paymentInfo && paymentInfo.success) {
           qrCode = await generateQRCode(orderNumber)
-          response = `삼성페이 결제가 완료되었습니다!\n\n주문번호: ${orderNumber}\n결제금액: ${amount.toLocaleString()}원\n결제방법: 삼성페이\n\n아래 QR 코드로 주문을 확인하실 수 있습니다.`
-        } else {
-          response = '죄송합니다. 결제 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'
         }
-      }
-      else {
-        response = '네, 무엇을 도와드릴까요? 메뉴 추천, 설명, 또는 결제에 대해 궁금한 것이 있으시면 언제든 말씀해 주세요!'
       }
 
       const agentMessage: Message = {
         id: Date.now().toString(),
-        content: response,
+        content: agentResponse.message || agentResponse.speak || '죄송합니다. 응답을 생성할 수 없습니다.',
         sender: 'agent',
         timestamp: new Date(),
         menuInfo,
@@ -159,7 +130,7 @@ export default function AgentChat() {
 
       setMessages(prev => [...prev, agentMessage])
     } catch (error) {
-      console.error('응답 생성 오류:', error)
+      console.error('Agent API 호출 오류:', error)
       const errorMessage: Message = {
         id: Date.now().toString(),
         content: '죄송합니다. 일시적인 오류가 발생했습니다. 다시 시도해 주세요.',
@@ -198,114 +169,81 @@ export default function AgentChat() {
       recognitionRef.current.lang = 'ko-KR'
 
       recognitionRef.current.onstart = () => setIsListening(true)
+
       recognitionRef.current.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript
         setInputText(transcript)
+        handleUserMessage(transcript)
+      }
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('음성 인식 오류:', event.error)
         setIsListening(false)
       }
-      recognitionRef.current.onerror = () => setIsListening(false)
+
       recognitionRef.current.onend = () => setIsListening(false)
 
       recognitionRef.current.start()
     } else {
-      alert('음성 인식을 지원하지 않는 브라우저입니다.')
+      alert('이 브라우저는 음성 인식을 지원하지 않습니다.')
     }
   }
 
   const stopListening = () => {
     if (recognitionRef.current) {
       recognitionRef.current.stop()
-      setIsListening(false)
     }
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* 아이폰 16 상단 안전 영역 + 헤더 */}
-      <div className="bg-white shadow-sm border-b border-gray-200 pt-safe-top">
-        <div className="px-4 py-4">
-          <div className="flex items-center justify-center space-x-3">
-            <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
-              <span className="text-white text-sm">🍽️</span>
-            </div>
-            <div className="text-center">
-              <h1 className="text-lg font-bold text-gray-900">점원 Agent</h1>
-              <p className="text-xs text-gray-500">말 걸면 다 해주는 똑똑한 점원</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div className="flex flex-col h-full bg-white">
       {/* 메시지 영역 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message) => (
           <div
             key={message.id}
             className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[75%] rounded-2xl px-3 py-2 ${
+              className={`max-w-[80%] p-3 rounded-lg ${
                 message.sender === 'user'
                   ? 'bg-blue-500 text-white'
-                  : 'bg-white text-gray-800 border border-gray-200 shadow-sm'
+                  : 'bg-gray-100 text-gray-800'
               }`}
             >
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+              <div className="whitespace-pre-wrap">{message.content}</div>
               
-              {/* 메뉴 정보 카드 */}
-              {message.menuInfo && (
-                <div className="mt-2 p-3 bg-orange-50 rounded-xl border border-orange-200">
-                  <h4 className="font-semibold text-orange-800 mb-1 text-sm">📋 메뉴 정보</h4>
-                  <div className="text-xs text-gray-700 space-y-1">
-                    <p><span className="font-medium">가격:</span> {message.menuInfo.price}</p>
-                    <p><span className="font-medium">평점:</span> {message.menuInfo.rating}/5</p>
-                  </div>
+              {/* 결제 정보 표시 */}
+              {message.paymentInfo && message.paymentInfo.success && (
+                <div className="mt-2 p-2 bg-green-50 rounded border border-green-200">
+                  <h4 className="font-semibold text-green-800">결제 완료</h4>
+                  <p className="text-sm text-green-600">금액: {message.paymentInfo.amount?.toLocaleString()}원</p>
+                  <p className="text-sm text-green-600">방법: {message.paymentInfo.provider}</p>
                 </div>
               )}
-
-              {/* 결제 정보 카드 */}
-              {message.paymentInfo && (
-                <div className="mt-2 p-3 bg-green-50 rounded-xl border border-green-200">
-                  <h4 className="font-semibold text-green-800 mb-1 text-sm">💳 결제 완료</h4>
-                  <div className="text-xs text-gray-700 space-y-1">
-                    <p><span className="font-medium">주문번호:</span> {message.paymentInfo.order_number}</p>
-                    <p><span className="font-medium">결제금액:</span> {message.paymentInfo.amount?.toLocaleString()}원</p>
-                    <p><span className="font-medium">결제방법:</span> 삼성페이</p>
-                  </div>
-                </div>
-              )}
-
-              {/* QR 코드 */}
+              
+              {/* QR 코드 표시 */}
               {message.qrCode && (
-                <div className="mt-2 p-3 bg-blue-50 rounded-xl border border-blue-200 text-center">
-                  <h4 className="font-semibold text-blue-800 mb-2 text-sm">📱 주문 확인 QR</h4>
-                  <div className="w-20 h-20 bg-white border border-blue-300 rounded-lg mx-auto flex items-center justify-center">
-                    <span className="text-xs text-gray-500">QR</span>
-                  </div>
-                  <p className="text-xs text-gray-600 mt-1">QR 코드를 스캔하여 주문을 확인하세요</p>
+                <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                  <h4 className="font-semibold text-blue-800">주문 확인 QR 코드</h4>
+                  <p className="text-sm text-blue-600">주문번호: {message.qrCode.order_number}</p>
+                  <p className="text-sm text-blue-600">만료시간: {new Date(message.qrCode.expires_at).toLocaleString()}</p>
                 </div>
               )}
-
-              <p className="text-xs opacity-60 mt-1">
-                {message.timestamp.toLocaleTimeString('ko-KR', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })}
-              </p>
+              
+              <div className="text-xs opacity-70 mt-1">
+                {message.timestamp.toLocaleTimeString()}
+              </div>
             </div>
           </div>
         ))}
         
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-white rounded-2xl px-3 py-2 border border-gray-200 shadow-sm">
+            <div className="bg-gray-100 text-gray-800 p-3 rounded-lg">
               <div className="flex items-center space-x-2">
-                <div className="flex space-x-1">
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                </div>
-                <span className="text-sm text-gray-500">답변 생성 중...</span>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                <span>응답 생성 중...</span>
               </div>
             </div>
           </div>
@@ -314,69 +252,34 @@ export default function AgentChat() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 입력 영역 - 아이폰 16 하단 안전 영역 */}
-      <div className="bg-white border-t border-gray-200 px-4 py-3 pb-safe-bottom">
-        {/* 빠른 액션 버튼들 */}
-        <div className="flex space-x-2 mb-3 overflow-x-auto">
-          <button
-            onClick={() => handleUserMessage('메뉴 추천해주세요')}
-            className="flex-shrink-0 px-3 py-1.5 bg-orange-100 text-orange-700 rounded-full text-xs font-medium hover:bg-orange-200 transition-colors"
-            disabled={isLoading}
-          >
-            🍽️ 메뉴 추천
-          </button>
-          <button
-            onClick={() => handleUserMessage('인기 메뉴가 뭐예요?')}
-            className="flex-shrink-0 px-3 py-1.5 bg-red-100 text-red-700 rounded-full text-xs font-medium hover:bg-red-200 transition-colors"
-            disabled={isLoading}
-          >
-            🔥 인기 메뉴
-          </button>
-          <button
-            onClick={() => handleUserMessage('삼성페이로 결제할게요')}
-            className="flex-shrink-0 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium hover:bg-blue-200 transition-colors"
-            disabled={isLoading}
-          >
-            💳 결제하기
-          </button>
-        </div>
-
-        {/* 입력창과 버튼들 */}
-        <div className="flex items-center space-x-2">
-          <div className="flex-1 relative">
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleUserMessage(inputText)}
-              placeholder="메뉴에 대해 궁금한 것을 물어보세요..."
-              className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-gray-50"
-              disabled={isLoading}
-            />
-          </div>
-          
-          {/* 음성 인식 버튼 */}
-          <button
-            onClick={isListening ? stopListening : startListening}
-            className={`p-2.5 rounded-full transition-all duration-200 ${
-              isListening 
-                ? 'bg-red-500 text-white scale-105' 
-                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-            }`}
-            disabled={isLoading}
-          >
-            <span className="text-sm">{isListening ? '🔴' : '🎤'}</span>
-          </button>
-          
-          {/* 전송 버튼 */}
+      {/* 입력 영역 */}
+      <div className="border-t p-4">
+        <div className="flex space-x-2">
+          <input
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleUserMessage(inputText)}
+            placeholder="메시지를 입력하세요..."
+            className="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
           <button
             onClick={() => handleUserMessage(inputText)}
-            disabled={!inputText.trim() || isLoading}
-            className="p-2.5 bg-orange-500 text-white rounded-full hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-200"
+            disabled={isLoading}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
+            전송
+          </button>
+          <button
+            onClick={isListening ? stopListening : startListening}
+            disabled={isLoading}
+            className={`px-4 py-2 rounded-lg ${
+              isListening
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-green-500 hover:bg-green-600 text-white'
+            } disabled:opacity-50`}
+          >
+            {isListening ? '🛑 중지' : '🎤 음성'}
           </button>
         </div>
       </div>
