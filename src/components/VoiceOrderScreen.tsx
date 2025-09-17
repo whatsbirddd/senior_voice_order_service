@@ -169,6 +169,119 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
 
 
 
+  // ---- Helper: find menu by name (normalized) ----
+  const findMenuItemByName = useCallback((name?: string | null) => {
+    if (!name) return null;
+    const normalized = name.replace(/\s+/g, '').toLowerCase();
+    return (menuItems.find(m => m.name.replace(/\s+/g, '').toLowerCase() === normalized) || null);
+  }, [menuItems]);
+
+  // Pending selection for quantity actions
+  const pendingItemRef = useRef<MenuItem | null>(null);
+
+  const ensureOrderItem = useCallback((menuItem: MenuItem, quantity: number) => {
+    setOrderItems((prev) => {
+      const existing = prev.find((i) => i.id === menuItem.id);
+      if (existing) {
+        return prev.map((i) => i.id === menuItem.id ? { ...i, quantity } : i);
+      }
+      return [...prev, { id: menuItem.id, name: menuItem.name, price: menuItem.price, quantity }];
+    });
+  }, []);
+
+  const adjustPendingQuantity = useCallback((delta: number) => {
+    const pending = pendingItemRef.current;
+    if (!pending) return;
+    setOrderItems((prev) => {
+      const existing = prev.find((i) => i.id === pending.id);
+      if (!existing) {
+        if (delta > 0) {
+          return [...prev, { id: pending.id, name: pending.name, price: pending.price, quantity: 1 }];
+        }
+        return prev;
+      }
+      const nextQty = Math.max(1, existing.quantity + delta);
+      return prev.map((i) => i.id === existing.id ? { ...i, quantity: nextQty } : i);
+    });
+  }, []);
+
+  // ---- Agent actions → UI state ----
+  const handleAgentActions = useCallback((actions: any[] | undefined) => {
+    if (!Array.isArray(actions)) return;
+    actions.forEach((act) => {
+      if (!act || typeof act !== 'object') return;
+      switch (act.type) {
+        case 'NAVIGATE': {
+          const target = String(act.target || '').toLowerCase();
+          if (target === 'home') setCurrentStep('store');
+          else if (target) setCurrentStep('menu');
+          break;
+        }
+        case 'SHOW_RECOMMENDATIONS': {
+          const items = Array.isArray(act.items) ? act.items : [];
+          const names = items.map((i: any) => i?.name).filter(Boolean) as string[];
+          if (names.length) {
+            const priority = new Set(names.map((n) => n.replace(/\s+/g, '').toLowerCase()));
+            const sorted = [...menuItems].sort((a, b) => {
+              const A = priority.has(a.name.replace(/\s+/g, '').toLowerCase()) ? 0 : 1;
+              const B = priority.has(b.name.replace(/\s+/g, '').toLowerCase()) ? 0 : 1;
+              return A - B;
+            });
+            setMenuItems(sorted);
+            setCurrentStep('menu');
+          }
+          break;
+        }
+        case 'SELECT_MENU_BY_NAME': {
+          const name = act.name || act.menu_name;
+          const item = findMenuItemByName(name);
+          if (item) pendingItemRef.current = item;
+          break;
+        }
+        case 'SET_QTY': {
+          const qty = Number(act.value ?? act.qty ?? act.quantity);
+          const item = pendingItemRef.current;
+          if (item && Number.isFinite(qty) && qty > 0) ensureOrderItem(item, qty);
+          break;
+        }
+        case 'INCREMENT_QTY': {
+          adjustPendingQuantity(1);
+          break;
+        }
+        case 'DECREMENT_QTY': {
+          adjustPendingQuantity(-1);
+          break;
+        }
+        case 'ADD_TO_CART': {
+          const item = pendingItemRef.current;
+          if (item) ensureOrderItem(item, 1);
+          break;
+        }
+        case 'REMOVE_FROM_CART': {
+          const id = String(act.menu_id || act.id || '');
+          if (!id) break;
+          setOrderItems((prev) => prev.filter((i) => i.id !== id));
+          break;
+        }
+        case 'READ_BACK_SUMMARY': {
+          const total = getTotalAmount();
+          const summary = orderItems.length
+            ? `현재 장바구니는 ${orderItems.map(i => `${i.name} ${i.quantity}개`).join(', ')}. 총 금액은 ${total.toLocaleString()}원입니다.`
+            : '장바구니가 비어 있어요.';
+          setLatestAgentMessage(summary);
+          break;
+        }
+        case 'ORDER': {
+          handleOrderComplete();
+          break;
+        }
+        default:
+          break;
+      }
+    });
+  }, [adjustPendingQuantity, ensureOrderItem, findMenuItemByName, getTotalAmount, menuItems, orderItems.length]);
+
+
   // ★ Agent 호출(내부적으로 chatWithAgent 사용)
   const askAgent = async (prompt: string) => {
     try {
@@ -179,9 +292,11 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
         store: selectedStore,
         message: prompt,
       });
-      const reply = (res && (res.reply || res.message || res.text)) ?? '안내를 불러오지 못했어요. 잠시 뒤 다시 시도해주세요.';
+      const reply = (res && (res.speak || res.reply || res.message || res.text)) ?? '안내를 불러오지 못했어요. 잠시 뒤 다시 시도해주세요.';
       setAgentMessages((m) => [...m, { role: 'assistant', content: reply }]);
       setLatestAgentMessage(reply);
+      // Apply agent UI actions if present
+      try { handleAgentActions((res as any)?.actions); } catch { }
     } catch {
       setAgentMessages((m) => [...m, { role: 'assistant', content: '지금은 안내가 어려워요. 잠시 뒤 다시 시도해주세요.' }]);
       setLatestAgentMessage('지금은 안내가 어려워요. 잠시 뒤 다시 시도해주세요.');
@@ -190,53 +305,7 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
     }
   };
 
-  // const startListening = () => {
-  //   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-  //     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-  //     recognitionRef.current = new SpeechRecognition();
-  //     recognitionRef.current.continuous = true;
-  //     recognitionRef.current.interimResults = true;
-  //     recognitionRef.current.lang = 'ko-KR';
-
-  //     recognitionRef.current.onstart = () => {
-  //       setIsListening(true);
-  //       setTranscript('');
-  //     };
-
-  //     recognitionRef.current.onresult = (event: any) => {
-  //       let finalTranscript = '';
-  //       for (let i = event.resultIndex; i < event.results.length; i++) {
-  //         if (event.results[i].isFinal) {
-  //           finalTranscript += event.results[i][0].transcript;
-  //         }
-  //       }
-  //       if (finalTranscript) {
-  //         setTranscript(finalTranscript);
-  //         processVoiceCommand(finalTranscript);
-  //       }
-  //     };
-
-  //     recognitionRef.current.onerror = (event: any) => {
-  //       console.error('음성 인식 오류:', event.error);
-  //       setIsListening(false);
-  //     };
-
-  //     recognitionRef.current.onend = () => {
-  //       setIsListening(false);
-  //     };
-
-  //     recognitionRef.current.start();
-  //   } else {
-  //     alert('이 브라우저는 음성 인식을 지원하지 않습니다.');
-  //   }
-  // };
-
-  // const stopListening = () => {
-  //   if (recognitionRef.current) {
-  //     recognitionRef.current.stop();
-  //   }
-  //   setIsListening(false);
-  // };
+  // ---- STT start/stop and processing ----
   const startListening = async () => {
     try {
       await ensureAzure();
@@ -246,7 +315,7 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
       const rec = recognizerRef.current!;
       rec.recognizing = (_s, e) => {
         // 중간결과 보고 싶으면 사용
-        // setTranscript(e.result.text);
+        setTranscript(e.result.text);
       };
       rec.recognized = (_s, e) => {
         if (e.result.reason === sdk.ResultReason.RecognizedSpeech) {
@@ -287,17 +356,7 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
 
     // 소개 화면에서의 명령
     if (currentStep === 'store') {
-      if (/추천|메뉴/.test(lower)) {
-        askAgent('오늘 추천 메뉴 알려줘');
-      } else if (/사람|대기|줄/.test(lower)) {
-        askAgent('지금 가면 붐비나요?');
-      } else if (/전화|예약/.test(lower)) {
-        window.location.href = `tel:0212345678`;
-      } else if (/길찾기|오시는|지도/.test(lower)) {
-        window.open(`https://map.naver.com/v5/search/${encodeURIComponent('서울 강서구 마곡동 123-45, 1층')}`, '_blank');
-      } else if (/주문|시작/.test(lower)) {
-        setCurrentStep('menu');
-      } else {
+      {
         askAgent(`요청: ${command}`);
       }
     }
@@ -317,7 +376,10 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
       }
     }
 
-    setTimeout(() => setIsProcessing(false), 800);
+    // 보조적으로, 에이전트가 앱 액션을 주도하도록 사용자 발화를 항상 전달
+    try { askAgent(command); } catch { }
+
+    setTimeout(() => setIsProcessing(false), 600);
   };
 
   const addToOrder = (menuItem: MenuItem) => {
@@ -355,9 +417,9 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
     });
   };
 
-  const getTotalAmount = () => {
+  function getTotalAmount() {
     return orderItems.reduce((total, item) => total + (item.price * item.quantity), 0);
-  };
+  }
 
   const handleOrderComplete = () => {
     if (orderItems.length > 0) {
