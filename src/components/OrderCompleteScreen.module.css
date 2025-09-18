@@ -1,0 +1,223 @@
+/* OrderCompleteScreen.module.css — theme-matched to VoiceOrderScreen */
+
+.root {
+    /* 동일 팔레트/톤 */
+    --bg: linear-gradient(135deg, #0f172a 0%, #1f2937 100%);
+    --fg: #e2e8f0;
+    --fg-muted: #94a3b8;
+    --card-fill: linear-gradient(135deg, rgba(17, 24, 39, 0.95), rgba(15, 23, 42, 0.88));
+    --card-border: rgba(148, 163, 184, 0.20);
+    --ring: rgba(96, 165, 250, 0.35);
+
+    --cta-fill: linear-gradient(135deg, #2563eb, #1d4ed8);
+    --cta-border: rgba(37, 99, 235, 0.6);
+
+    min-height: 100svh;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+/* 메인 완료 카드: VoiceOrderScreen의 카드/섀도/보더 톤과 동일 */
+.successCard {
+    position: relative;
+    overflow: hidden;
+    border-radius: 24px;
+    /* VoiceOrderScreen과 라운드 통일감 */
+    background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.82)) padding-box,
+        linear-gradient(135deg, rgba(96, 165, 250, 0.28), rgba(148, 163, 184, 0.18)) border-box;
+    border: 1px solid transparent;
+    box-shadow: 0 25px 45px rgba(15, 23, 42, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    color: #f8fafc;
+}
+
+/* 아이콘 원: 같은 글래스/톤 다운 */
+.iconWrap {
+    width: clamp(88px, 12vw, 128px);
+    height: clamp(88px, 12vw, 128px);
+    margin-inline: auto;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    display: grid;
+    place-items: center;
+    box-shadow: 0 18px 35px rgba(15, 23, 42, 0.55);
+}
+
+/* 텍스트 톤 */
+.title {
+    color: #f8fafc;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+.numberLabel {
+    color: #cbd5f5;
+    font-weight: 700;
+}
+
+.numberValue {
+    color: #ffffff;
+    font-weight: 900;
+    letter-spacing: 1px;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+.hintLine {
+    color: #cbd5f5;
+    font-size: 1.2rem;
+    font-weight: 500;
+}
+
+/* 주문번호 패널: VoiceOrderScreen의 카드 톤 */
+.numberCard {
+    background: var(--card-fill);
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--card-border);
+    box-shadow: 0 18px 35px rgba(15, 23, 42, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    color: #f8fafc;
+}
+
+/* ETA 카드/텍스트도 동일 톤으로 */
+.root :global(.card) {
+    margin: 0 0 12px;
+    padding: 18px;
+    border-radius: 16px;
+    text-align: center;
+    background: var(--card-fill);
+    border: 1px solid var(--card-border);
+    color: var(--fg);
+    box-shadow: 0 18px 35px rgba(15, 23, 42, 0.6);
+}
+
+.root :global(.text-muted-foreground) {
+    color: #94a3b8 !important;
+}
+
+.root :global(.text-card-foreground) {
+    color: #e2e8f0 !important;
+}
+
+/* CTA 버튼: VoiceOrderScreen의 orderButton과 같은 블루 그라디언트 */
+.root :global(.btn) {
+    width: 100%;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: 16px;
+    border: 1px solid var(--cta-border);
+    font-weight: 900;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease;
+}
+
+.root :global(.btn-light) {
+    background: var(--cta-fill);
+    color: #f8fafc;
+    box-shadow: 0 18px 40px rgba(37, 99, 235, 0.4);
+}
+
+@media (hover: hover) {
+    .root :global(.btn-light:hover) {
+        transform: translateY(-1px);
+        background: linear-gradient(135deg, #1e3a8a, #2563eb);
+        box-shadow: 0 22px 45px rgba(30, 64, 175, 0.45);
+        border-color: rgba(96, 165, 250, 0.45);
+    }
+}
+
+.root :global(.btn-light:focus-visible) {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ring);
+}
+
+/* 라이트 클래스가 남아있던 텍스트/배경을 다크로 강제 정리 (안전망) */
+.successCard :where(h1, p) {
+    color: #f8fafc !important;
+}
+
+/* 레이아웃/여백 */
+.wrapper {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 24px;
+}
+
+.successCard {
+    padding: 32px 24px 24px;
+    margin-bottom: 20px;
+}
+
+.successHead {
+    text-align: center;
+    margin-bottom: 24px;
+}
+
+.hints {
+    text-align: center;
+    margin-top: 10px;
+    display: grid;
+}
+
+/* ETA 카드/버튼 (모듈 전용) */
+.etaCard {
+    margin: 0 0 14px;
+    padding: 18px;
+    border-radius: 16px;
+    text-align: center;
+    background: var(--card-fill);
+    border: 1px solid var(--card-border);
+    box-shadow: 0 18px 35px rgba(15, 23, 42, .6);
+}
+
+.etaLabel {
+    color: var(--fg-muted);
+    margin: 0 0 6px;
+    font-weight: 700;
+}
+
+.etaValue {
+    color: var(--fg);
+    margin: 0;
+    font-size: clamp(22px, 4vw, 28px);
+    font-weight: 800;
+}
+
+.ctaBar {
+    display: flex;
+    justify-content: center;
+}
+
+.ctaButton {
+    appearance: none;
+    border: 1px solid var(--cta-border);
+    border-radius: 16px;
+    padding: 14px 18px;
+    font-weight: 900;
+    letter-spacing: .2px;
+    color: #f8fafc;
+    background: var(--cta-fill);
+    box-shadow: 0 18px 40px rgba(37, 99, 235, .4);
+    cursor: pointer;
+    transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease;
+}
+
+@media (hover:hover) {
+    .ctaButton:hover {
+        transform: translateY(-1px);
+        background: linear-gradient(135deg, #1e3a8a, #2563eb);
+        border-color: rgba(96, 165, 250, .45);
+        box-shadow: 0 22px 45px rgba(30, 64, 175, .45);
+    }
+}
+
+.ctaButton:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ring);
+}

@@ -64,6 +64,7 @@ class AzureLLM:
             )
             choice = resp.choices[0]
             msg = choice.message
+            print("[llm_openai] LLM response:", msg.content)
             out: Dict[str, Any] = {"role": msg.role or "assistant", "content": msg.content}
             if msg.tool_calls:
                 tc = msg.tool_calls[0]

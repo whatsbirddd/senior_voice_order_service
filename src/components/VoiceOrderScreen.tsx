@@ -5,6 +5,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styles from './VoiceOrderScreen.module.css';
 import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
 
+//DANGER!FRAGILE uses private objects to work around issue: https://github.com/Azure-Samples/cognitive-services-speech-sdk/issues/2350
+function KillAudio(synthesizer: sdk.SpeechSynthesizer) {
+  // kill the audio
+  const audio: HTMLAudioElement | undefined = synthesizer.privAdapter?.privSessionAudioDestination?.privDestination?.privAudio;
+  if (audio) {
+    audio.pause();
+    audio.currentTime = 0;
+  }
+}
 
 interface MenuItem {
   id: string;
@@ -65,6 +74,12 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
   }, [selectedStore]);
   const synthesizerRef = useRef<sdk.SpeechSynthesizer | null>(null);
 
+  useEffect(() => {
+    return () => {
+      stopTTS();
+    }
+  }, []);
+
   const ensureAzureTTS = async () => {
     // ensureAzure() 안에서 만든 speechConfig 재활용
     await ensureAzure();
@@ -86,9 +101,45 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
     } catch (e) { console.error('[Azure TTS error]', e); }
   }, []);
 
+  // Stop any ongoing TTS immediately (Azure + browser fallback)
+  const stopTTS = useCallback(() => {
+    console.log('asdf');
+    try {
+      if (synthesizerRef.current) {
+        console.log('yoyo', synthesizerRef.current);
+        KillAudio(synthesizerRef.current);
+        synthesizerRef.current.close();
+        synthesizerRef.current = null;
+      }
+    } catch { /* noop */ }
+    try {
+      if (typeof window !== 'undefined') {
+        window.speechSynthesis?.cancel();
+      }
+    } catch { /* noop */ }
+  }, []);
+
   useEffect(() => {
     speak(latestAgentMessage);
   }, [latestAgentMessage, speak]);
+
+  // Resolve menu image path with graceful fallback across common extensions
+  const getMenuImageSrc = useCallback((name: string) => {
+    return `/images/${encodeURIComponent(name)}.jpeg`;
+  }, []);
+  const menuImageOnError = useCallback((name: string, e: React.SyntheticEvent<HTMLImageElement>) => {
+    const el = e.currentTarget;
+    const tried = el.getAttribute('data-try') || 'jpeg';
+    if (tried === 'jpeg') {
+      el.setAttribute('data-try', 'jpg');
+      el.src = `/images/${encodeURIComponent(name)}.jpg`;
+    } else if (tried === 'jpg') {
+      el.setAttribute('data-try', 'png');
+      el.src = `/images/${encodeURIComponent(name)}.png`;
+    } else {
+      el.src = '/images/restaurant.jpg';
+    }
+  }, []);
 
   // Azure STT 객체
   const recognizerRef = useRef<sdk.SpeechRecognizer | null>(null);
@@ -346,6 +397,8 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
   // ---- STT start/stop and processing ----
   const startListening = async () => {
     try {
+      // UX: When mic starts, stop any ongoing TTS so the user isn't talking over audio
+      stopTTS();
       await ensureAzure();
       setTranscript('');
       setIsListening(true);
@@ -418,7 +471,7 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
         setAgentMessages((m) => [...m, { role: 'assistant', content: follow }]);
       }
       // 항상 에이전트에도 전달해 맥락/액션 생성 시도
-      askAgent(`요청: ${command}`);
+      // askAgent(`요청: ${command}`);
     }
 
     // 메뉴 선택 화면에서의 명령(기존 로직 유지)
@@ -521,18 +574,25 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
         <div className={styles.agentCard}>
           <p className={styles.agentMessage}>{latestAgentMessage}</p>
           <p className={styles.agentHint}>"주문할게요" 라고 말씀해 주세요.</p>
-          <button
+          {/* <button
             className={styles.agentActionButton}
             onClick={() => askAgent('이 가게의 대표 메뉴와 추천 메뉴에 대해 자세히 설명해주세요')}
             disabled={agentLoading}
           >
             {agentLoading ? '안내 불러오는 중...' : '추천 메뉴 듣기'}
-          </button>
+          </button> */}
         </div>
 
         <div className={styles.voiceCta}>
           <button
-            onClick={isListening ? stopListening : startListening}
+            onClick={() => {
+              stopTTS();
+              if (isListening) {
+                stopListening();
+              } else {
+                startListening();
+              }
+            }}
             className={styles.voiceCtaButton}
             disabled={agentLoading}
           >
@@ -552,7 +612,6 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
     <div className={styles.animateFadeIn}>
       <div className={styles.sectionHeader}>
         <h1 className={styles.sectionTitle}>메뉴를 선택해주세요</h1>
-        <p className={styles.sectionSubtitle}>{selectedStore}</p>
       </div>
 
       {latestAgentMessage && (
@@ -563,6 +622,21 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
           )} */}
         </div>
       )}
+
+      <div className={styles.voiceBlock}>
+        <button
+          onClick={isListening ? stopListening : startListening}
+          className={[styles.voiceButton, isListening ? styles.recording : ''].filter(Boolean).join(' ')}
+          disabled={isProcessing}
+        >
+          {isListening ? '🎤' : '🗣️'}
+        </button>
+        {transcript && (
+          <p className={styles.transcript}>
+            "{transcript}"
+          </p>
+        )}
+      </div>
 
       <div className={styles.menuScrollable}>
         <div className={styles.menuList}>
@@ -577,7 +651,15 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
                 <p className={styles.menuDescription}>{item.description}</p>
                 <p className={styles.menuPrice}>{item.price.toLocaleString()}원</p>
               </div>
-              <div className={styles.menuEmoji}>🍽️</div>
+              <img
+                alt={item.name}
+                className={styles.menuThumb}
+                src={getMenuImageSrc(item.name)}
+                data-try="jpeg"
+                onError={(e) => menuImageOnError(item.name, e)}
+                loading="lazy"
+                decoding="async"
+              />
             </button>
           ))}
         </div>
@@ -614,24 +696,6 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
           </div>
         </div>
       )}
-
-      <div className={styles.voiceBlock}>
-        <button
-          onClick={isListening ? stopListening : startListening}
-          className={[styles.voiceButton, isListening ? styles.recording : ''].filter(Boolean).join(' ')}
-          disabled={isProcessing}
-        >
-          {isListening ? '🎤' : '🗣️'}
-        </button>
-        <p className={styles.voiceHint}>
-          {isListening ? '주문을 듣고 있습니다...' : '음성으로 주문하기'}
-        </p>
-        {transcript && (
-          <p className={styles.transcript}>
-            "{transcript}"
-          </p>
-        )}
-      </div>
 
       <div className={styles.actions}>
         {orderItems.length > 0 && (

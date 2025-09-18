@@ -29,12 +29,29 @@ UI_ACTION_WHITELIST = {
 }
 
 def _strip_json_fence(text: str) -> str:
+    """Return a JSON string.
+
+    - If the LLM output is fenced (```), remove the fence and extract the outermost JSON object.
+    - If the result does not look like JSON, wrap the raw text as a minimal JSON payload
+      so downstream json.loads() always succeeds:
+        {"speak": <raw_text>, "actions": [{"type": "CLARIFY"}]}
+    """
     t = (text or "").strip()
     if t.startswith("```"):
         t = t.strip("`\n")
-        if "{" in t:
-            t = t[t.find("{"): t.rfind("}") + 1]
-    return t
+        if "{" in t and "}" in t:
+            t = t[t.find("{") : t.rfind("}") + 1]
+    # If already looks like a JSON object, return as-is
+    if t.startswith("{") and t.endswith("}"):
+        return t
+    # Fallback: coerce to minimal JSON structure so parsing doesn't fail later
+    speak = t or "원하시는 메뉴를 조금 더 구체적으로 말씀해 주시겠어요?"
+    fallback = {"speak": speak, "actions": [{"type": "CLARIFY"}]}
+    try:
+        return json.dumps(fallback, ensure_ascii=False)
+    except Exception:
+        # Extremely defensive: last resort plain string in JSON
+        return '{"speak":"%s","actions":[{"type":"CLARIFY"}]}' % speak.replace('"', '\\"')
 
 
 class VoiceOrderAgent:

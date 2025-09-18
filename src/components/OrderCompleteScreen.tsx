@@ -1,4 +1,5 @@
 import { CheckCircle } from 'lucide-react';
+import styles from './OrderCompleteScreen.module.css';
 
 interface OrderCompleteScreenProps {
   orderNumber: string;
@@ -7,49 +8,43 @@ interface OrderCompleteScreenProps {
 
 export function OrderCompleteScreen({ orderNumber, onStartOver }: OrderCompleteScreenProps) {
   return (
-    <div className="min-h-screen bg-background text-foreground p-6 flex items-center justify-center">
-      <div className="max-w-md mx-auto w-full">
+    <div className={styles.root}>
+      <div className={styles.wrapper}>
         {/* 메인 완료 카드 */}
-        <div 
-          className="rounded-[40px] p-12 text-center mb-8 relative overflow-hidden"
-          style={{ background: 'var(--gradient-green)' }}
-        >
-          {/* 완료 아이콘 */}
-          <div className="mb-8">
-            <div className="w-32 h-32 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle size={80} className="text-white" />
+        <section className={styles.successCard}>
+          <div className={styles.successHead}>
+            <div className={styles.iconWrap}>
+              <CheckCircle size={80} className={styles.icon} />
             </div>
-            <h1 className="text-4xl mb-4 text-black/90">주문 완료!</h1>
+            <h1 className={styles.title}>주문 완료!</h1>
           </div>
 
           {/* 주문번호 */}
-          <div className="bg-white/20 backdrop-blur-sm rounded-3xl p-6 mb-6">
-            <p className="text-xl text-black/70 mb-3">주문번호</p>
-            <p className="text-6xl text-black/90 mb-4">{orderNumber}</p>
+          <div className={styles.numberCard}>
+            <p className={styles.numberLabel}>주문번호</p>
+            <p className={styles.numberValue}>{orderNumber}</p>
           </div>
 
           {/* 안내 메시지 */}
-          <div className="space-y-2">
-            <p className="text-xl text-black/70">맛있는 음식을 준비하고 있어요</p>
-            <p className="text-xl text-black/70">잠시만 기다려주세요! 😊</p>
+          <div className={styles.hints}>
+            <p className={styles.hintLine}>맛있는 음식을 준비하고 있어요</p>
+            <p className={styles.hintLine}>잠시만 기다려주세요! 😊</p>
           </div>
-        </div>
+        </section>
 
-        {/* 예상 시간 카드 */}
-        <div className="card text-center">
-          <p className="text-lg text-muted-foreground mb-2">예상 준비 시간</p>
-          <p className="text-3xl text-card-foreground">15-20분</p>
-        </div>
+        {/* 예상 시간 */}
+        <section className={styles.etaCard}>
+          <p className={styles.etaLabel}>예상 준비 시간</p>
+          <p className={styles.etaValue}>15-20분</p>
+        </section>
 
-        {/* 새로 주문하기 버튼 */}
-        <button
-          onClick={onStartOver}
-          className="btn btn-light w-full"
-        >
-          새로 주문하기
-        </button>
+        {/* CTA */}
+        <div className={styles.ctaBar}>
+          <button className={styles.ctaButton} onClick={onStartOver}>
+            새로 주문하기
+          </button>
+        </div>
       </div>
     </div>
   );
 }
-

@@ -699,7 +699,7 @@
 
 /* ---- Scrollable menu panel so agent text + STT stay visible ---- */
 .menuScrollable {
-  max-height: clamp(260px, 45vh, 560px);
+  max-height: 60px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding-right: 6px;
@@ -784,7 +784,7 @@
   max-height: 240px;
 }
 
-.agentCard {
+/* .agentCard {
   width: 100%;
   max-width: 420px;
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(15, 23, 42, 0.75) 100%);
@@ -802,7 +802,110 @@
   font-size: 1.1rem;
   line-height: 1.5;
   font-weight: 600;
+} */
+
+/* 카드 컨테이너 */
+.agentCard {
+  --bg-1: rgba(13, 19, 33, 0.92);
+  --bg-2: rgba(10, 14, 24, 0.78);
+  --text: #e8edf4;
+  --muted: #a7b2bf;
+  --accent-1: #5eead4;
+  /* teal */
+  --accent-2: #60a5fa;
+  /* blue */
+  --ring: rgba(94, 234, 212, 0.35);
+
+  position: relative;
+  width: 100%;
+
+  /* gradient fill + gradient border (two backgrounds trick) */
+  background:
+    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%) padding-box,
+    linear-gradient(135deg, rgba(94, 234, 212, 0.45), rgba(96, 165, 250, 0.42)) border-box;
+
+  padding: clamp(18px, 3.5vh, 26px) clamp(18px, 4vw, 28px) clamp(22px, 4vh, 32px);
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--text);
+
+  box-shadow:
+    0 18px 50px rgba(3, 7, 18, 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  backdrop-filter: saturate(120%) blur(6px);
+  -webkit-backdrop-filter: saturate(120%) blur(6px);
+
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  overflow: hidden;
 }
+
+/* subtle corner glow accents */
+.agentCard::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(140px 60px at 12% 0%, rgba(94, 234, 212, 0.20), transparent 60%),
+    radial-gradient(160px 70px at 88% 0%, rgba(96, 165, 250, 0.18), transparent 60%);
+  mix-blend-mode: screen;
+}
+
+/* focus/hover affordance */
+@media (hover: hover) {
+  .agentCard:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 22px 60px rgba(3, 7, 18, 0.7),
+      0 0 0 1px var(--ring) inset;
+  }
+}
+
+.agentCard:focus-within {
+  outline: none;
+  box-shadow:
+    0 22px 60px rgba(3, 7, 18, 0.7),
+    0 0 0 2px var(--ring) inset;
+}
+
+/* 메시지 텍스트 */
+.agentMessage {
+  margin: 0;
+  font-size: clamp(1.05rem, 1.6vw, 1.18rem);
+  line-height: 1.55;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  color: var(--text);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* 강조(있으면) */
+.agentMessage strong {
+  color: #e6fffb;
+  background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* gradient text */
+  font-weight: 800;
+}
+
+.agentMessage em {
+  font-style: normal;
+  color: var(--muted);
+  text-decoration: underline dotted rgba(255, 255, 255, 0.28);
+}
+
+/* reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .agentCard {
+    transition: none;
+  }
+}
+
 
 .agentHint {
   margin: 0;
@@ -1105,14 +1208,6 @@
   margin-top: 16px;
 }
 
-/* (선택) 부트스트랩 .btn 공존 시 스타일 보강 */
-.ctaBar :global(.btn) {
-  padding: 12px 16px;
-  /* 터치 여유 */
-  border-radius: 12px;
-  /* 둥글게 */
-}
-
 /* 모바일에서 세로로 쌓고 버튼을 넓게 */
 @media (max-width: 420px) {
   .ctaBar {
@@ -1389,178 +1484,437 @@
   }
 }
 
-/* ===== menu grid ===== */
+/* 메뉴 스크롤 컨테이너 */
+.menuScrollable {
+  /* component-scoped theme tokens */
+  --bg: #0b0f14;
+  --card-bg: #0f1620;
+  --card-bg-hover: #121c28;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-border-hover: rgba(94, 234, 212, 0.45);
+  --text: #e6edf3;
+  --muted: #9aa7b2;
+  --accent: #5eead4;
+
+  max-height: 320px;
+  overflow: auto;
+  padding: 8px;
+  background: transparent;
+  scrollbar-width: thin;
+  /* Firefox */
+  scrollbar-color: var(--accent) rgba(255, 255, 255, 0.08);
+}
+
+/* WebKit scrollbars */
+.menuScrollable::-webkit-scrollbar {
+  width: 10px;
+}
+
+.menuScrollable::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+
+.menuScrollable::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--accent), #3fc4b4);
+  border-radius: 999px;
+}
+
+/* 목록 그리드 */
 .menuList {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
 }
 
-/* ===== each menu card (button) ===== */
+/* 카드 버튼 */
 .menuItem {
-  appearance: none;
-  border: 1px solid rgba(110, 168, 255, 0.22);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(110, 168, 255, 0.08));
-  border-radius: 14px;
-  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+
+  width: 100%;
+  padding: 16px 18px;
+  border-radius: 16px;
+
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  backdrop-filter: saturate(110%) blur(0.5px);
+  border: 1px solid var(--card-border);
+  color: var(--text);
   text-align: left;
 
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 10px;
-
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
   cursor: pointer;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
-  transition: transform .08s ease, box-shadow .18s ease, border-color .18s ease, filter .18s ease;
 }
 
-.menuItem:hover {
-  transform: translateY(-2px);
-  border-color: #6ea8ff;
-  box-shadow: 0 14px 32px rgba(110, 168, 255, 0.25);
-  filter: saturate(1.03);
+@media (hover: hover) {
+  .menuItem:hover {
+    background: var(--card-bg-hover);
+    border-color: var(--card-border-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(94, 234, 212, 0.12), inset 0 0 0 1px rgba(94, 234, 212, 0.15);
+  }
 }
 
 .menuItem:active {
   transform: translateY(0);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, .18);
+  box-shadow: none;
 }
 
 .menuItem:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 4px rgba(110, 168, 255, .35), 0 10px 26px rgba(110, 168, 255, .25);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(94, 234, 212, 0.25);
 }
 
-/* ===== text ===== */
+/* 제목/설명/가격 */
 .menuHeading {
-  margin: 0 0 4px;
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--text);
 }
 
 .menuDescription {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: #6b7280;
-  /* dim text */
-  line-height: 1.4;
-  display: -webkit-box;
-  /* 2줄 말줄임 */
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--muted);
 }
 
 .menuPrice {
-  margin: 0;
-  font-weight: 800;
-  letter-spacing: .02em;
+  margin: 10px 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+
+  /* subtle accent text */
+  background: linear-gradient(90deg, var(--accent), #9be8dd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
-/* ===== emoji icon ===== */
+/* 우측 아이콘 */
 .menuEmoji {
-  font-size: 22px;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .25));
-  align-self: center;
+  flex-shrink: 0;
+  font-size: 1.6rem;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+  transform: translateZ(0);
+  transition: transform 180ms ease;
 }
 
-/* motion 줄이기 옵션 */
+/* 메뉴 썸네일 이미지 */
+.menuThumb {
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  object-fit: cover;
+  object-position: center;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+@media (hover: hover) {
+
+  .menuItem:hover .menuEmoji,
+  .menuItem:hover .menuThumb {
+    transform: scale(1.07) rotate(-2deg);
+  }
+}
+
+/* 줄어든 모션 선호 */
 @media (prefers-reduced-motion: reduce) {
-  .menuItem {
+
+  .menuItem,
+  .menuEmoji {
     transition: none;
   }
-
-  .menuItem:hover {
-    transform: none;
-  }
 }
 
-/* ===== menu grid ===== */
-.menuList {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 14px;
+/* 주문 요약 카드 */
+.summaryCard {
+  --bg-1: rgba(13, 19, 33, 0.92);
+  --bg-2: rgba(10, 14, 24, 0.78);
+  --border: rgba(255, 255, 255, 0.08);
+  --ring: rgba(94, 234, 212, 0.35);
+  --text: #e8edf4;
+  --muted: #9aa7b2;
+  --accent: #5eead4;
+
+  width: 100%;
+  margin-top: 14px;
+  padding: 16px 16px 18px;
+  border-radius: 18px;
+
+  background:
+    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 100%) padding-box,
+    linear-gradient(135deg, rgba(94, 234, 212, 0.36), rgba(96, 165, 250, 0.28)) border-box;
+  border: 1px solid transparent;
+  color: var(--text);
+
+  box-shadow:
+    0 14px 30px rgba(3, 7, 18, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  backdrop-filter: saturate(120%) blur(5px);
+  -webkit-backdrop-filter: saturate(120%) blur(5px);
 }
 
-/* ===== each menu card (button) ===== */
-.menuItem {
-  appearance: none;
-  border: 1px solid rgba(110, 168, 255, 0.22);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(110, 168, 255, 0.08));
-  border-radius: 14px;
-  padding: 14px;
-  text-align: left;
+/* 제목 */
+.summaryTitle {
+  margin: 0 0 10px;
+  font-size: 0.98rem;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  color: var(--text);
+  background: linear-gradient(90deg, var(--accent), #8bd9ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
 
+/* 각 아이템 행 */
+.summaryItem {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 10px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  transition: background 160ms ease, transform 160ms ease;
+}
 
+@media (hover: hover) {
+  .summaryItem:hover {
+    background: rgba(255, 255, 255, 0.04);
+    transform: translateY(-1px);
+  }
+}
+
+/* 좌/우 정렬 블록 */
+.summaryInfo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 140px;
+  color: var(--text);
+}
+
+.summaryPrice {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+  background: linear-gradient(90deg, var(--accent), #9be8dd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 제거 버튼 */
+.removeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e2e8f0;
+  font-size: 1rem;
+  line-height: 1;
   cursor: pointer;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
-  transition: transform .08s ease, box-shadow .18s ease, border-color .18s ease, filter .18s ease;
+  transition: border-color 160ms ease, background 160ms ease, transform 120ms ease;
 }
 
-.menuItem:hover {
-  transform: translateY(-2px);
-  border-color: #6ea8ff;
-  box-shadow: 0 14px 32px rgba(110, 168, 255, 0.25);
-  filter: saturate(1.03);
+@media (hover: hover) {
+  .removeButton:hover {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.45);
+  }
 }
 
-.menuItem:active {
-  transform: translateY(0);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, .18);
+.removeButton:active {
+  transform: scale(0.96);
 }
 
-.menuItem:focus-visible {
+.removeButton:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 4px rgba(110, 168, 255, .35), 0 10px 26px rgba(110, 168, 255, .25);
+  box-shadow: 0 0 0 3px var(--ring);
+  border-color: var(--accent);
 }
 
-/* ===== text ===== */
-.menuHeading {
-  margin: 0 0 4px;
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+/* 구분선 */
+.summaryDivider {
+  height: 1px;
+  margin: 10px 4px 12px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
+  border: 0;
 }
 
-.menuDescription {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: #6b7280;
-  /* dim text */
-  line-height: 1.4;
-  display: -webkit-box;
-  /* 2줄 말줄임 */
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+/* 합계 행 */
+.summaryTotalRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03));
+  border: 1px dashed rgba(255, 255, 255, 0.1);
 }
 
-.menuPrice {
-  margin: 0;
-  font-weight: 800;
-  letter-spacing: .02em;
+.summaryTotalLabel {
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.2px;
 }
 
-/* ===== emoji icon ===== */
-.menuEmoji {
-  font-size: 22px;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .25));
-  align-self: center;
+.summaryTotalValue {
+  font-size: 1.05rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+  color: var(--text);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
-/* motion 줄이기 옵션 */
+/* 모션 최소화 선호 */
 @media (prefers-reduced-motion: reduce) {
-  .menuItem {
+
+  .summaryItem,
+  .removeButton {
     transition: none;
   }
+}
 
-  .menuItem:hover {
-    transform: none;
+/* 액션 바 컨테이너 (그대로 사용) */
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+/* 모바일에서 가득 차게 */
+@media (max-width: 480px) {
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions :global(.btn) {
+    width: 100%;
+  }
+}
+
+/* 공통 버튼 (전역 .btn 를 로컬 .actions 아래로 제한) */
+.actions :global(.btn) {
+  --ring: rgba(94, 234, 212, 0.35);
+  --text: #e8edf4;
+
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  line-height: 1;
+  color: var(--text);
+  cursor: pointer;
+
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, border-color 160ms ease;
+  will-change: transform;
+}
+
+/* 프라이머리 */
+.actions :global(.btn-primary) {
+  background: linear-gradient(135deg, #5eead4 0%, #60a5fa 100%);
+  box-shadow:
+    0 8px 20px rgba(3, 7, 18, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  color: #0b1020;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+@media (hover: hover) {
+  .actions :global(.btn-primary:hover) {
+    transform: translateY(-1px);
+    box-shadow:
+      0 12px 28px rgba(3, 7, 18, 0.65),
+      0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  }
+}
+
+.actions :global(.btn-primary:active) {
+  transform: translateY(0);
+}
+
+.actions :global(.btn-primary:focus-visible) {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+/* 다크 */
+.actions :global(.btn-dark) {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #e6edf3;
+  backdrop-filter: saturate(120%) blur(4px);
+  -webkit-backdrop-filter: saturate(120%) blur(4px);
+}
+
+@media (hover: hover) {
+  .actions :global(.btn-dark:hover) {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+}
+
+.actions :global(.btn-dark:focus-visible) {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+/* 비활성 */
+.actions :global(.btn[disabled]),
+.actions :global(.btn:disabled) {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* 장바구니 아이콘(로컬) */
+.orderButtonIcon {
+  display: inline-block;
+  font-size: 1.15rem;
+  transform: translateZ(0);
+  transition: transform 160ms ease;
+}
+
+@media (hover: hover) {
+  .actions :global(.btn-primary:hover) .orderButtonIcon {
+    transform: translateY(-1px) scale(1.07);
+  }
+}
+
+/* 모션 최소화 */
+@media (prefers-reduced-motion: reduce) {
+
+  .actions :global(.btn),
+  .orderButtonIcon {
+    transition: none;
   }
 }

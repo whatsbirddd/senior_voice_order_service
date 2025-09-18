@@ -279,74 +279,301 @@ def place(store: str) -> Dict[str, Any]:
 # ─────────────────────────────────────────────────────────────
 # 4) 추천 집계(reviews + nutrition + catalog)
 # ─────────────────────────────────────────────────────────────
-def recommend(store: str, top_n: int = 3, profile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """
-    리뷰 언급과 간단 영양 태그, 선호/비선호/알레르리를 고려해 상위 N개 추천.
+# def recommend(store: str, top_n: int = 3, profile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+#     """
+#     리뷰 언급과 간단 영양 태그, 선호/비선호/알레르리를 고려해 상위 N개 추천.
 
+#     TOOL_SPEC={
+#       "name": "recommend",
+#       "description": "리뷰/영양/프로필(선호·비선호·알레르기)을 고려해 상위 N개 메뉴를 추천합니다.",
+#       "parameters": {
+#         "type": "object",
+#         "properties": {
+#           "store": {"type": "string"},
+#           "top_n": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3},
+#           "profile": {"type": "object"}
+#         },
+#         "required": ["store"]
+#       }
+#     }
+#     Returns: {"items": [{"name": str, "reason": str}], "debug": {...}}
+#     """
+#     if not _CURRENT_CATALOG:
+#         return {"items": []}
+
+#     try:
+#         prof = profile or {}
+#         prefers = {str(x).lower() for x in (prof.get("prefers") or [])}
+#         dislikes = {str(x).lower() for x in (prof.get("dislikes") or [])}
+#         allergies = {str(x).lower() for x in (prof.get("allergies") or [])}
+
+#         items = _CURRENT_CATALOG.list(store)
+#         names = [m.name for m in items]
+#         rev = reviews(store=store, menu_names=names, max_results=8, fetch_pages=False)
+#         mention_map = {str(x.get("name", "")).replace(" ", "").lower(): int(x.get("count", 0) or 0) for x in (rev.get("menu_mentions") or [])}
+
+#         def score(m) -> float:
+#             s = 0.0
+#             nm = m.name.replace(" ", "").lower()
+#             desc = str(getattr(m, "desc", "")).lower()
+#             # review boost
+#             s += 0.6 * mention_map.get(nm, 0)
+#             # prefers/dislikes
+#             if any(p in desc for p in prefers):
+#                 s += 0.5
+#             if any(d in desc for d in dislikes):
+#                 s -= 0.5
+#             # allergies block (if mentioned in desc)
+#             if any(a in desc for a in allergies):
+#                 s -= 2.0
+#             return s
+
+#         ranked = sorted(items, key=score, reverse=True)
+#         out: List[Dict[str, Any]] = []
+#         for m in ranked:
+#             if len(out) >= int(top_n or 3):
+#                 break
+#             nm = m.name
+#             desc = str(getattr(m, "desc", ""))
+#             mention = mention_map.get(nm.replace(" ", "").lower(), 0)
+#             tag = []
+#             if prefers and any(p in desc.lower() for p in prefers):
+#                 tag.append("선호")
+#             if mention:
+#                 tag.append(f"리뷰 언급 {mention}회")
+#             reason = " · ".join(tag) if tag else (desc[:24] + ("…" if len(desc) > 24 else ""))
+#             out.append({"name": nm, "reason": reason})
+
+#         return {"items": out, "debug": {"mentions": mention_map}}
+#     except Exception:
+#         return {"items": []}
+
+# ─────────────────────────────────────────────────────────────
+# LLM 기반 사랑스러운 구어체 추천 (Azure OpenAI) - 문자열 반환
+# ─────────────────────────────────────────────────────────────
+ 
+# 업데이트 된 맥도날드 메뉴별 리뷰 (menu 필드 포함)
+_MCD_REVIEWS = [
+    {"store": "맥도날드", "branch": "강남점", "menu": "빅맥", "rating": 5, "review": "빅맥은 역시 최고입니다! 패티와 소스가 완벽하게 어울려요."},
+    {"store": "맥도날드", "branch": "홍대점", "menu": "맥치킨", "rating": 4, "review": "맥치킨이 바삭하고 촉촉해서 맛있었어요. 소스도 잘 어울렸습니다."},
+    {"store": "맥도날드", "branch": "신촌점", "menu": "맥너겟", "rating": 3, "review": "맥너겟은 평범한 맛이었지만 소스가 맛있었어요."},
+    {"store": "맥도날드", "branch": "잠실점", "menu": "상하이 스파이시 버거", "rating": 5, "review": "상하이 스파이시 버거는 매콤하고 바삭해서 정말 맛있어요!"},
+    {"store": "맥도날드", "branch": "구로디지털점", "menu": "슈슈버거", "rating": 2, "review": "슈슈버거는 소스가 너무 달고 제 입맛엔 별로였어요."},
+    {"store": "맥도날드", "branch": "서초점", "menu": "불고기버거", "rating": 4, "review": "불고기버거는 달달한 소스와 촉촉한 패티가 잘 어울려요."},
+    {"store": "맥도날드", "branch": "종로점", "menu": "에그불고기버거", "rating": 3, "review": "에그불고기버거는 계란이 들어가서 부드럽지만 좀 느끼했어요."},
+    {"store": "맥도날드", "branch": "여의도점", "menu": "더블치즈버거", "rating": 5, "review": "더블치즈버거는 치즈가 듬뿍 들어가 정말 진한 맛이에요."},
+    {"store": "맥도날드", "branch": "명동점", "menu": "맥스파이시 상하이 디럭스", "rating": 4, "review": "맥스파이시 상하이 디럭스는 매운맛이 적당해서 만족했습니다."},
+    {"store": "맥도날드", "branch": "건대입구점", "menu": "치즈스틱", "rating": 5, "review": "치즈스틱은 겉은 바삭하고 속은 쭉 늘어나서 정말 맛있어요."},
+    {"store": "맥도날드", "branch": "역삼점", "menu": "감자튀김", "rating": 4, "review": "감자튀김은 항상 바삭하고 짭짤해서 맛있어요."},
+    {"store": "맥도날드", "branch": "노원점", "menu": "코울슬로", "rating": 2, "review": "코울슬로는 드레싱이 너무 달고 별로였어요."},
+    {"store": "맥도날드", "branch": "합정점", "menu": "아이스크림콘", "rating": 5, "review": "아이스크림콘은 부드럽고 달콤해서 아이들과 먹기 좋아요."},
+    {"store": "맥도날드", "branch": "왕십리점", "menu": "해피스낵 치즈버거", "rating": 3, "review": "해피스낵 치즈버거는 크기가 작아서 간식으로 괜찮아요."},
+    {"store": "맥도날드", "branch": "신림점", "menu": "애플파이", "rating": 4, "review": "애플파이는 따뜻하고 달콤해서 후식으로 딱입니다."},
+    {"store": "맥도날드", "branch": "목동점", "menu": "오레오 맥플러리", "rating": 5, "review": "오레오 맥플러리는 오레오와 아이스크림이 잘 어우러져 정말 맛있어요."},
+    {"store": "맥도날드", "branch": "수유점", "menu": "스파이시 맥너겟", "rating": 4, "review": "스파이시 맥너겟은 매콤해서 술안주로도 좋은 것 같아요."},
+    {"store": "맥도날드", "branch": "신대방점", "menu": "에그 맥머핀", "rating": 3, "review": "에그 맥머핀은 부드럽지만 빵이 조금 퍽퍽했어요."},
+    {"store": "맥도날드", "branch": "대치점", "menu": "더블 쿼터파운더 치즈", "rating": 5, "review": "더블 쿼터파운더 치즈는 두툼한 패티와 치즈가 환상적이에요."},
+    {"store": "맥도날드", "branch": "이수점", "menu": "불고기버거", "rating": 4, "review": "불고기버거는 소스가 맛있고 패티가 촉촉해서 자주 먹어요."}
+]
+ 
+_USER_MENUS = [
+    {"store": "버거킹", "category": "Fastfood", "menu": "와퍼", "user": "김지민"},
+    {"store": "롯데리아", "category": "Fastfood", "menu": "새우버거", "user": "박서준"},
+    {"store": "KFC", "category": "Fastfood", "menu": "징거버거", "user": "이수빈"},
+    {"store": "본죽", "category": "한식", "menu": "전복죽", "user": "김지민"},
+    {"store": "한솥도시락", "category": "한식", "menu": "치킨마요", "user": "박서준"},
+    {"store": "비빔밥집", "category": "한식", "menu": "소고기비빔밥", "user": "이수빈"},
+    {"store": "이탈리안레스토랑", "category": "양식", "menu": "크림파스타", "user": "김지민"},
+    {"store": "파스타하우스", "category": "양식", "menu": "토마토파스타", "user": "박서준"},
+    {"store": "피자헛", "category": "양식", "menu": "페퍼로니피자", "user": "이수빈"},
+    {"store": "파리바게뜨", "category": "베이커리", "menu": "소세지빵", "user": "김지민"},
+    {"store": "뚜레쥬르", "category": "베이커리", "menu": "치즈케이크", "user": "박서준"},
+    {"store": "샤니", "category": "베이커리", "menu": "단팥빵", "user": "이수빈"},
+    {"store": "스타벅스", "category": "카페", "menu": "아이스아메리카노", "user": "김지민"},
+    {"store": "이디야커피", "category": "카페", "menu": "연유라떼", "user": "박서준"},
+    {"store": "투썸플레이스", "category": "카페", "menu": "카페라떼", "user": "이수빈"},
+    {"store": "교촌치킨", "category": "치킨", "menu": "허니콤보", "user": "김지민"},
+    {"store": "BBQ", "category": "치킨", "menu": "황금올리브치킨", "user": "박서준"},
+    {"store": "네네치킨", "category": "치킨", "menu": "스노윙치킨", "user": "이수빈"},
+]
+ 
+def _classify_rating(r: int) -> str:
+    if r >= 4:
+        return "positive"
+    if r <= 2:
+        return "negative"
+    return "neutral"
+ 
+def _aggregate_reviews(store: str):
+    rows = [r for r in _MCD_REVIEWS if r["store"] == store]
+    by_menu = {}
+    for r in rows:
+        m = r["menu"]
+        bucket = by_menu.setdefault(m, {"menu": m, "ratings": [], "positive": 0, "neutral": 0, "negative": 0, "samples": []})
+        bucket["ratings"].append(r["rating"])
+        sent = _classify_rating(r["rating"])
+        bucket[sent] += 1
+        if len(bucket["samples"]) < 2:
+            bucket["samples"].append(r["review"])
+    menus = []
+    for m, info in by_menu.items():
+        avg = sum(info["ratings"]) / len(info["ratings"])
+        info["avg_rating"] = round(avg, 2)
+        diff = info["positive"] - info["negative"]
+        info["score"] = diff * 2 + avg * 0.3
+        del info["ratings"]
+        menus.append(info)
+    menus.sort(key=lambda x: (-x["score"], -x["avg_rating"], -x["positive"]))
+    overall = {
+        "count": len(rows),
+        "positive": sum(1 for r in rows if _classify_rating(r["rating"]) == "positive"),
+        "neutral": sum(1 for r in rows if _classify_rating(r["rating"]) == "neutral"),
+        "negative": sum(1 for r in rows if _classify_rating(r["rating"]) == "negative"),
+        "menus": menus[:20]
+    }
+    return overall
+ 
+def _fallback_text(store: str, top_items, tone: str = "customer") -> str:
+    if not top_items:
+        return f"죄송합니다 고객님, 지금은 {store} 메뉴 추천 정보를 불러오지 못했어요. 잠시 후 다시 도와드릴게요."
+    parts = []
+    for it in top_items:
+        menu = it["menu"]
+        pos = it["positive"]
+        neg = it["negative"]
+        avg = it["avg_rating"]
+        if pos and not neg:
+            reason = "평이 고루 좋아 부담 없이 드시기 좋아 보여요"
+        elif pos > neg:
+            reason = "좋다는 말씀 비율이 높아서 골라봤어요"
+        else:
+            reason = "무난한 편이라 편하게 드실 수 있을 것 같아요"
+        parts.append(f"{menu}는 별점 {avg}점대에 긍정 {pos}건이라 {reason}")
+    body = " / ".join(parts[:3])
+    return f"고객님, 제가 살펴본 바로는 {body}. 천천히 골라보실까요?"
+ 
+def recommend(store: str, user: Optional[str] = None, top_n: int = 3,
+                  profile: Optional[Dict[str, Any]] = None,
+                  model: Optional[str] = None) -> str:
+    """
+    Azure OpenAI GPT를 사용해 매장 직원이 고객님께 다정하고 세심하게 2~3개 메뉴를 제안하는 문장을 생성합니다.
+    (손주가 살뜰히 챙기듯 배려하되 호칭은 항상 '고객님')
     TOOL_SPEC={
-      "name": "recommend",
-      "description": "리뷰/영양/프로필(선호·비선호·알레르기)을 고려해 상위 N개 메뉴를 추천합니다.",
+      "name": "llm_recommend",
+      "description": "사용자 이력(있으면) 또는 리뷰 감성(별점 4이상 긍정, 2이하 부정)을 활용해 직원 톤으로 2~3개 메뉴를 한국어 자연문으로 추천합니다.",
       "parameters": {
         "type": "object",
         "properties": {
           "store": {"type": "string"},
+          "user": {"type": "string"},
           "top_n": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3},
-          "profile": {"type": "object"}
+          "profile": {"type": "object"},
+          "model": {"type": "string"}
         },
         "required": ["store"]
       }
     }
-    Returns: {"items": [{"name": str, "reason": str}], "debug": {...}}
+    Returns: 추천 멘트 문자열
     """
     if not _CURRENT_CATALOG:
-        return {"items": []}
-
+        return "고객님, 현재 메뉴 정보를 불러오지 못해 바로 추천을 드리기 어렵습니다. 잠시 후 다시 도와드릴게요."
     try:
+        catalog_items = _CURRENT_CATALOG.list(store)
+        if not catalog_items:
+            return f"고객님, {store} 매장 메뉴가 아직 준비되지 않아 추천이 어려워요."
+ 
+        # 사용자 이력
+        user_history = [r for r in _USER_MENUS if user and r.get("user") == user]
+ 
+        # 리뷰 집계 (사용자 이력 없을 때)
+        review_agg = _aggregate_reviews(store) if not user_history else None
+ 
         prof = profile or {}
-        prefers = {str(x).lower() for x in (prof.get("prefers") or [])}
-        dislikes = {str(x).lower() for x in (prof.get("dislikes") or [])}
-        allergies = {str(x).lower() for x in (prof.get("allergies") or [])}
-
-        items = _CURRENT_CATALOG.list(store)
-        names = [m.name for m in items]
-        rev = reviews(store=store, menu_names=names, max_results=8, fetch_pages=False)
-        mention_map = {str(x.get("name", "")).replace(" ", "").lower(): int(x.get("count", 0) or 0) for x in (rev.get("menu_mentions") or [])}
-
-        def score(m) -> float:
-            s = 0.0
-            nm = m.name.replace(" ", "").lower()
-            desc = str(getattr(m, "desc", "")).lower()
-            # review boost
-            s += 0.6 * mention_map.get(nm, 0)
-            # prefers/dislikes
-            if any(p in desc for p in prefers):
-                s += 0.5
-            if any(d in desc for d in dislikes):
-                s -= 0.5
-            # allergies block (if mentioned in desc)
-            if any(a in desc for a in allergies):
-                s -= 2.0
-            return s
-
-        ranked = sorted(items, key=score, reverse=True)
-        out: List[Dict[str, Any]] = []
-        for m in ranked:
-            if len(out) >= int(top_n or 3):
-                break
-            nm = m.name
-            desc = str(getattr(m, "desc", ""))
-            mention = mention_map.get(nm.replace(" ", "").lower(), 0)
-            tag = []
-            if prefers and any(p in desc.lower() for p in prefers):
-                tag.append("선호")
-            if mention:
-                tag.append(f"리뷰 언급 {mention}회")
-            reason = " · ".join(tag) if tag else (desc[:24] + ("…" if len(desc) > 24 else ""))
-            out.append({"name": nm, "reason": reason})
-
-        return {"items": out, "debug": {"mentions": mention_map}}
+        prefers = prof.get("prefers") or []
+        dislikes = prof.get("dislikes") or []
+        allergies = prof.get("allergies") or []
+ 
+        # 컨텍스트 구성
+        context = {
+            "basis": "user_history" if user_history else "reviews",
+            "store": store,
+            "requested_top_n": top_n,
+            "profile": {
+                "prefers": prefers,
+                "dislikes": dislikes,
+                "allergies": allergies
+            }
+        }
+        if user_history:
+            context["user_history"] = user_history
+        else:
+            context["review_summary"] = review_agg
+ 
+        # 모델 지시
+        system_message = {
+            "role": "system",
+            "content": (
+                "역할: 패스트푸드 매장 직원. 고객님께 다정하고 세심하게 메뉴 2~3가지를 권유.\n"
+                "톤: '고객님' 호칭, 공손·따뜻·차분. 과한 감탄, 이모지, 해시태그, 명령조, 과장 표현 금지.\n"
+                "리뷰 감성 규칙: rating>=4 → 긍정, rating<=2 → 부정. 부정 많은 메뉴는 직접적 비추천 대신 자연스럽게 제외.\n"
+                "선정 원칙:\n"
+                "1) 긍정 건수와 평균 별점이 높은 메뉴 우선\n"
+                "2) 알레르기·비선호 추정 재료(문맥에 포함) 가능성 있으면 조용히 제외하거나 '부담 덜한' 대안 강조\n"
+                "3) 2~3개 이내, 230자 이하 하나의 단락.\n"
+                "표현 지침:\n"
+                "- 이유는 '평이 고르게 좋아', '많이 찾으셔서', '속 편하게 드시기 좋아 보여', '부담 덜하실 것 같아' 등 자연스러운 생활어\n"
+                "- 숫자 나열/JSON/불릿/따옴표/목록/괄호 남용 금지\n"
+                "- 메뉴명은 그대로 사용, 필요한 경우 1회 정도만 언급\n"
+                "- 사랑을 직접 언급 X. 대신 세심한 배려 뉘앙스\n"
+                "출력: 조건에 맞는 한 단락 한국어 문장만."
+            )
+        }
+ 
+        user_message = {
+            "role": "user",
+            "content": "컨텍스트:\n" + json.dumps(context, ensure_ascii=False)
+        }
+ 
+        messages = [system_message, user_message]
+ 
+        # Azure 호출
+        try:
+            from openai import AzureOpenAI  # type: ignore
+            azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+            azure_key = os.getenv("AZURE_OPENAI_KEY")
+            api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+            deployment = model or os.getenv("AZURE_OPENAI_DEPLOYMENT") or "gpt-4o-mini"
+            client = AzureOpenAI(
+                api_key=azure_key,
+                api_version=api_version,
+                azure_endpoint=azure_endpoint,
+            )
+            resp = client.chat.completions.create(
+                model=deployment,
+                messages=messages,
+                temperature=0.4,
+                max_tokens=420,
+                top_p=0.9,
+            )
+            text = (resp.choices[0].message.content or "").strip()
+            # 형식 방어: JSON/목록/기호 제거
+            if text.startswith("{") or text.startswith("["):
+                text = re.sub(r"[{}\[\]]", " ", text)
+            text = re.sub(r"(?:^[-•\d\)\.]+\s*)", "", text)  # 리스트 기호 제거
+            text = re.sub(r"\s+", " ", text).strip()
+            if len(text) < 10:
+                raise ValueError("empty response")
+            return text
+        except Exception:
+            # Fallback: 상위 메뉴 계산
+            if review_agg:
+                top = review_agg["menus"][:top_n]
+            else:
+                top = []
+            return _fallback_text(store, top[:top_n])
     except Exception:
-        return {"items": []}
+        return "고객님, 지금은 추천 문장을 생성하는 중 문제가 발생했어요. 잠시 후 다시 시도해 보겠습니다."
+  
 
 
 # ─────────────────────────────────────────────────────────────
