@@ -103,6 +103,9 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
   const recognizerRef = useRef<sdk.SpeechRecognizer | null>(null);
   const speechConfigRef = useRef<sdk.SpeechConfig | null>(null);
   const tokenExpireAtRef = useRef(0);
+  const finalHandledRef = useRef(false);
+  // Prevent repeating one-off follow-up prompts until the user speaks again
+  const followupShownRef = useRef(false);
 
   // 토큰/객체 보장
   const ensureAzure = async () => {
@@ -296,7 +299,27 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
       setAgentMessages((m) => [...m, { role: 'assistant', content: reply }]);
       setLatestAgentMessage(reply);
       // Apply agent UI actions if present
-      try { handleAgentActions((res as any)?.actions); } catch { }
+      const actions = (res as any)?.actions;
+      const hadActions = Array.isArray(actions) && actions.length > 0;
+      try { handleAgentActions(actions); } catch { }
+      // If no actions and we are in the menu step, guide the user with a follow-up (only once per utterance)
+      if (!hadActions && currentStep === 'menu' && !followupShownRef.current) {
+        const followup = '관심 있는 메뉴 이름을 말씀해 주세요. 예) "불고기정식"';
+        setLatestAgentMessage(followup);
+        setAgentMessages((m) => [...m, { role: 'assistant', content: followup }]);
+        followupShownRef.current = true;
+      }
+      // If no actions while at store step and the user intent is 추천/메뉴/주문/시작, fall back to menu view with guidance
+      if (!hadActions && currentStep === 'store' && !followupShownRef.current) {
+        const intent = (prompt || '').toLowerCase();
+        if (/(추천|메뉴|주문|시작)/.test(intent)) {
+          setCurrentStep('menu');
+          const followup = '추천 메뉴를 보여드릴게요. 관심 있는 메뉴를 말씀해 주세요.';
+          setLatestAgentMessage(followup);
+          setAgentMessages((m) => [...m, { role: 'assistant', content: followup }]);
+          followupShownRef.current = true;
+        }
+      }
     } catch {
       setAgentMessages((m) => [...m, { role: 'assistant', content: '지금은 안내가 어려워요. 잠시 뒤 다시 시도해주세요.' }]);
       setLatestAgentMessage('지금은 안내가 어려워요. 잠시 뒤 다시 시도해주세요.');
@@ -311,18 +334,25 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
       await ensureAzure();
       setTranscript('');
       setIsListening(true);
+      finalHandledRef.current = false;
 
       const rec = recognizerRef.current!;
       rec.recognizing = (_s, e) => {
         // 중간결과 보고 싶으면 사용
         setTranscript(e.result.text);
       };
+      // STT -> Agent의 입력으로 사용
       rec.recognized = (_s, e) => {
         if (e.result.reason === sdk.ResultReason.RecognizedSpeech) {
           const text = e.result.text?.trim();
           if (text) {
             setTranscript(text);
+            finalHandledRef.current = true;
+            // New utterance resets follow-up prompt gate
+            followupShownRef.current = false;
             processVoiceCommand(text);  // 기존 로직 재사용
+            // UX: 최종 인식이 있으면 자동으로 마이크 끄기
+            try { stopListening(); } catch { }
           }
         }
       };
@@ -342,9 +372,18 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
   const stopListening = () => {
     const rec = recognizerRef.current;
     if (!rec) return;
+    const maybeSendToAgent = () => {
+      setIsListening(false);
+      const t = (transcript || '').trim();
+      if (!finalHandledRef.current && t) {
+        // 사용자가 중간에 멈춘 경우 현재 transcript로 에이전트 호출
+        followupShownRef.current = false;
+        askAgent(t);
+      }
+    };
     rec.stopContinuousRecognitionAsync(
-      () => setIsListening(false),
-      (err) => { console.error('[Azure STT stop error]', err); setIsListening(false); }
+      () => maybeSendToAgent(),
+      (err) => { console.error('[Azure STT stop error]', err); maybeSendToAgent(); }
     );
   };
 
@@ -356,9 +395,15 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
 
     // 소개 화면에서의 명령
     if (currentStep === 'store') {
-      {
-        askAgent(`요청: ${command}`);
+      // 주문/시작/메뉴/추천 키워드 감지 시 메뉴 화면으로 전환
+      if (/(주문|시작|메뉴|추천)/.test(lower)) {
+        setCurrentStep('menu');
+        const follow = '메뉴로 이동했어요. 관심 있는 메뉴를 말씀해 주세요. 예) "불고기정식"';
+        setLatestAgentMessage(follow);
+        setAgentMessages((m) => [...m, { role: 'assistant', content: follow }]);
       }
+      // 항상 에이전트에도 전달해 맥락/액션 생성 시도
+      askAgent(`요청: ${command}`);
     }
 
     // 메뉴 선택 화면에서의 명령(기존 로직 유지)
@@ -368,9 +413,23 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
           addToOrder(item);
         }
       });
-      if (/주문(하기)?|결제/.test(lower) && orderItems.length > 0) {
-        handleOrderComplete();
+
+      if (/주문(하기)?|결제/.test(lower)) {
+        if (orderItems.length > 0) {
+          handleOrderComplete();
+        } else if (pendingItemRef.current) {
+          // 최근 선택된 메뉴가 있다면 1개 기준으로 바로 담고 주문 진행
+          ensureOrderItem(pendingItemRef.current, 1);
+          handleOrderComplete();
+        } else {
+          // 장바구니 비어 있으면 에이전트에 위임 + 안내 멘트
+          const follow = '장바구니가 비어 있어요. 메뉴 이름을 말씀해 주세요. 예) "불고기정식"';
+          setLatestAgentMessage(follow);
+          setAgentMessages((m) => [...m, { role: 'assistant', content: follow }]);
+          try { askAgent('주문하려고 하는데 메뉴가 정해지지 않았어요. 추천해 주세요.'); } catch { }
+        }
       }
+
       if (/뒤로|매장/.test(lower)) {
         setCurrentStep('store');
       }
@@ -481,21 +540,32 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
         <p className={styles.sectionSubtitle}>{selectedStore}</p>
       </div>
 
-      <div className={styles.menuList}>
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => addToOrder(item)}
-            className={styles.menuItem}
-          >
-            <div>
-              <h3 className={styles.menuHeading}>{item.name}</h3>
-              <p className={styles.menuDescription}>{item.description}</p>
-              <p className={styles.menuPrice}>{item.price.toLocaleString()}원</p>
-            </div>
-            <div className={styles.menuEmoji}>🍽️</div>
-          </button>
-        ))}
+      {latestAgentMessage && (
+        <div className={styles.agentCard} style={{ marginBottom: 16 }}>
+          <p className={styles.agentMessage}>{latestAgentMessage}</p>
+          {!agentLoading && (
+            <p className={styles.agentHint}>메뉴 이름을 말씀해 주세요. 예) "불고기정식"</p>
+          )}
+        </div>
+      )}
+
+      <div className={styles.menuScrollable}>
+        <div className={styles.menuList}>
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => addToOrder(item)}
+              className={styles.menuItem}
+            >
+              <div>
+                <h3 className={styles.menuHeading}>{item.name}</h3>
+                <p className={styles.menuDescription}>{item.description}</p>
+                <p className={styles.menuPrice}>{item.price.toLocaleString()}원</p>
+              </div>
+              <div className={styles.menuEmoji}>🍽️</div>
+            </button>
+          ))}
+        </div>
       </div>
 
       {orderItems.length > 0 && (

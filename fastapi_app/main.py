@@ -11,30 +11,15 @@ from fastapi import Body, FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-_ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
-
-
-def _load_env_file() -> None:
-    if not _ENV_PATH.exists():
-        return
-# Import from local modules
+# ensure local imports work when running as a module
 import sys
-from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from agent import VoiceOrderAgent, build_agent
 from fastapi_app.speech import AzureSpeechService
 from fastapi_app.menus import MenuItem
 from agent.llm_openai import AzureAudioTranscriber
-# Import from local modules
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent))
-
-from agent import VoiceOrderAgent, build_agent
-from fastapi_app.speech import AzureSpeechService
-from fastapi_app.menus import MenuItem
-from agent.llm_openai import AzureAudioTranscriber
+from agent.user_profile import SingleUserProfileStore
 
 app = FastAPI(title="Senior Voice Agent API", version="2.0.0")
 app.add_middleware(
@@ -46,8 +31,7 @@ app.add_middleware(
 
 agent: VoiceOrderAgent = build_agent()
 catalog = agent.catalog
-reviews = agent.reviews
-recommender = agent.recommender
+single_user = SingleUserProfileStore(Path(__file__).resolve().parents[1] / "data" / "user_profile.json")
 speech_service = AzureSpeechService()
 transcriber = AzureAudioTranscriber()
 
@@ -95,6 +79,7 @@ class AgentChatRequest(BaseModel):
     store: Optional[str] = None
     selectedNames: List[str] = Field(default_factory=list)
     profile: Optional[UserProfile] = None
+    userId: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -112,22 +97,21 @@ def _fallback_menu(store: str) -> List[MenuItem]:
 
 
 def _menu_response(store: str) -> Dict[str, Any]:
-    menu_items = catalog.list(store)
-    source = "imported"
+    menu_items = catalog.list(store) if catalog else []
+    source = "imported" if menu_items else "fallback"
     if not menu_items:
         menu_items = _fallback_menu(store)
-        source = "fallback"
-    featured = catalog.featured(store)
-    if not featured and menu_items:
-        featured = menu_items[0]
-    payload = {
+    featured = catalog.featured(store) if catalog else (menu_items[0] if menu_items else None)
+    return {
         "store": store,
         "source": source,
-        "menu": [item.to_api() for item in menu_items],
+        "menu": [item.to_api() if hasattr(item, 'to_api') else {
+            "name": getattr(item, 'name', None),
+            "description": getattr(item, 'desc', ''),
+            "price": getattr(item, 'price', 0),
+        } for item in menu_items],
+        **({"featured": featured.to_api()} if featured else {}),
     }
-    if featured:
-        payload["featured"] = featured.to_api()
-    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +126,25 @@ def health() -> Dict[str, Any]:
 def upsert_profile(profile: UserProfile) -> Dict[str, Any]:
     agent.memory.update(profile.sessionId, {"profile": profile.dict(exclude_none=True)})
     return {"ok": True}
+
+
+# ---------------- User profile/history endpoints ----------------
+@app.post("/user/profile/upsert")
+def user_profile_upsert(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
+    patch = payload.get("profile") or payload or {}
+    rec = single_user.upsert_profile(patch)
+    return {"ok": True, "user": rec.to_dict()}
+
+
+@app.get("/user/profile")
+def user_profile_get() -> Dict[str, Any]:
+    rec = single_user.get()
+    return rec.to_dict()
+
+
+@app.get("/user/history")
+def user_history_get() -> Dict[str, Any]:
+    return {"history": single_user.history()}
 
 
 @app.get("/api/menu")
@@ -168,8 +171,8 @@ def import_menu(body: MenuImportBody) -> Dict[str, Any]:
 
 @app.get("/api/reviews")
 def get_reviews(store: str) -> Dict[str, Any]:
-    bundle = reviews.get(store)
-    return bundle.to_api()
+    # Simplified: no external review service
+    return {"store": store, "summary": "리뷰 서비스 비활성화", "highlights": []}
 
 
 @app.post("/api/recommend")
@@ -177,12 +180,11 @@ def recommend_menu(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict
     store = str(payload.get("store", "")).strip()
     if not store:
         raise HTTPException(status_code=400, detail="store is required")
-    profile = payload.get("profile") or {}
-    recos = recommender.recommend(store, profile)
-    return {
-        "store": store,
-        "suggested": [item.to_api() for item in recos],
-    }
+    items = catalog.list(store) if catalog else []
+    if not items:
+        items = _fallback_menu(store)
+    # naive top-3
+    return {"store": store, "suggested": [it.to_api() for it in items[:3]]}
 
 
 @app.get("/api/place")
@@ -216,14 +218,36 @@ def mock_pay(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, 
 
 @app.post("/agent/chat")
 def agent_chat(req: AgentChatRequest) -> Dict[str, Any]:
-    profile_dict = req.profile.dict(exclude_none=True) if req.profile else None
+    # merge profile: stored + request
+    merged_profile: Optional[Dict[str, Any]] = None
+    # merge single-user stored profile
+    rec = single_user.get()
+    merged_profile = dict(rec.profile)
+    try:
+        # include recent history so the agent tools can read it
+        merged_profile["history"] = single_user.history()
+    except Exception:
+        pass
+    if req.profile:
+        patch = req.profile.dict(exclude_none=True)
+        merged_profile = {**(merged_profile or {}), **patch}
     response = agent.handle(
         session_id=req.sessionId,
         message=req.message,
         store=req.store,
         selected_names=req.selectedNames,
-        profile=profile_dict,
+        profile=merged_profile,
     )
+    print(f"[agent_chat] session={req.sessionId} message={req.message} response={response}")
+    # record order in history when ORDER action present
+    try:
+        if any(a.get("type") == "ORDER" for a in (response.get("actions") or [])):
+            session = agent.memory.get_session(req.sessionId)
+            if session.selected_menu and session.store:
+                qty = session.quantity or 1
+                single_user.add_order(store=session.store, item=session.selected_menu, quantity=qty)
+    except Exception:
+        pass
     return response
 
 
@@ -237,7 +261,7 @@ def agent_chat_legacy(req: AgentChatRequest) -> Dict[str, Any]:
 def search_menu(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
     store = payload.get("store_name") or payload.get("store") or "가게"
     query = payload.get("query", "")
-    recos = recommender.recommend(store, payload.get("profile")) or _fallback_menu(store)
+    recos = catalog.list(store)[:3] if catalog and catalog.list(store) else _fallback_menu(store)
     return {
         "store_name": store,
         "query": query,

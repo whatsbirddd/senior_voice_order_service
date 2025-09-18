@@ -1,66 +1,60 @@
+# core.py
 from __future__ import annotations
 
-import re
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+import json
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
-    from voice_mvp.backend import (  # type: ignore[import-not-found]
-        ConversationStage,
-        MenuCatalog,
-        RecommendationEngine,
-        ReviewService,
-    )
-except ModuleNotFoundError:  # pragma: no cover - fallback when running flat
-    from fastapi_app import (
-        ConversationStage,
-        MenuCatalog,
-        RecommendationEngine,
-        ReviewService,
-    )
+    from voice_mvp.backend import ConversationStage, MenuCatalog  # type: ignore[import-not-found]
+except ModuleNotFoundError:
+    from fastapi_app.state import ConversationStage  # type: ignore
+    from fastapi_app.menus import MenuCatalog  # type: ignore
 
 from .prompt import default_prompt
 from .memory import Memory
+from . import tools as toolmod  # <-- docstring 기반 discover
 
-if TYPE_CHECKING:  # pragma: no cover
-    from .llm_openai import AzureLLM
-
-
-KOREAN_NUMBER_WORDS = {
-    "한": 1,
-    "하나": 1,
-    "두": 2,
-    "둘": 2,
-    "세": 3,
-    "셋": 3,
-    "네": 4,
-    "넷": 4,
-    "다섯": 5,
-    "여섯": 6,
-    "일곱": 7,
-    "여덟": 8,
-    "아홉": 9,
-    "열": 10,
+# 프론트가 이해하는 액션만 전달
+UI_ACTION_WHITELIST = {
+    "NAVIGATE",
+    "SHOW_RECOMMENDATIONS",
+    "SELECT_MENU_BY_NAME",
+    "SET_QTY",
+    "INCREMENT_QTY",
+    "DECREMENT_QTY",
+    "ADD_TO_CART",
+    "READ_BACK_SUMMARY",
+    "ORDER",
 }
 
+def _strip_json_fence(text: str) -> str:
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = t.strip("`\n")
+        if "{" in t:
+            t = t[t.find("{"): t.rfind("}") + 1]
+    return t
 
 
 class VoiceOrderAgent:
-    """Conversational agent that guides seniors through ordering."""
+    """
+    default_prompt + (docstring에서 추출된 도구 안내/스키마)를 사용.
+    OpenAI function-calling 루프로 툴을 자동 선택/실행한다.
+    """
 
     def __init__(
         self,
         menu_catalog: MenuCatalog,
-        review_service: ReviewService,
-        recommender: RecommendationEngine,
         memory: Memory,
         llm: Optional["AzureLLM"] = None,
     ) -> None:
-        self.prompt = default_prompt
         self.catalog = menu_catalog
-        self.reviews = review_service
-        self.recommender = recommender
         self.memory = memory
         self.llm = llm
+
+        # 툴 준비 (카탈로그 주입 → docstring discover)
+        toolmod.set_catalog(menu_catalog)
+        self._tool_schemas, self._tool_map, self._tools_text = toolmod.discover_tools()
 
     # ------------------------------------------------------------------
     def handle(
@@ -68,125 +62,253 @@ class VoiceOrderAgent:
         session_id: str,
         message: str,
         *,
-        store: str | None = None,
+        store: Optional[str] = None,
         selected_names: Optional[List[str]] = None,
         profile: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """LLM 기반 대화 처리 - 모든 로직을 LLM에 위임"""
         session = self.memory.get_session(session_id)
-        if profile:
-            session.profile = profile
-        cleaned = (message or "").strip()
-        session.remember_user(cleaned)
 
-        # 가게 정보 설정
+        if profile:
+            session.profile.update(profile)
+
+        text = (message or "").strip()
+        if text:
+            session.remember_user(text)
+
+        # 기본 매장
         if store:
             session.store = store.strip()
         elif not session.store:
-            # 기본 매장으로 옥소반 마곡본점 고정
             session.store = "옥소반 마곡본점"
 
-        # selected_names 처리 (프론트엔드에서 메뉴 선택한 경우)
+        # 클라에서 직접 선택한 메뉴 반영
         if selected_names:
             for name in selected_names:
-                match = self.catalog.find(session.store, name) if session.store else None
-                if match:
-                    session.selected_menu = match.name
+                m = self.catalog.find(session.store, name)
+                if m:
+                    session.selected_menu = m.name
                     session.stage = ConversationStage.AWAIT_QUANTITY
 
-        # LLM이 사용 가능한 경우 모든 처리를 LLM에 위임
-        if self.llm and getattr(self.llm, "available", False):
-            try:
-                llm_response = self._handle_with_llm(session, cleaned)
-                if llm_response:
-                    return llm_response
-            except Exception as e:
-                # LLM 실패 시 기본 응답
-                return self._respond(
-                    session, 
-                    "죄송합니다. 잠시 문제가 있었습니다. 다시 말씀해 주세요.", 
-                    {"store": session.store or ""}, 
-                    []
-                )
-
-        # LLM이 없는 경우 기본 응답
-        if not session.store:
-            reply = "어느 가게에서 주문을 도와드릴까요? 가게 이름을 말씀해 주세요."
-            return self._respond(session, reply, {}, [])
-        
-        return self._respond(
-            session, 
-            "안녕하세요! 주문을 도와드리겠습니다. 무엇을 드시고 싶으신가요?", 
-            {"store": session.store}, 
-            []
-        )
-    def _handle_with_llm(self, session: Any, cleaned_message: str) -> Optional[Dict[str, Any]]:
-        if not self.llm or not getattr(self.llm, "available", False):
-            return None
-
-        import json
-
-        history_messages: List[Dict[str, str]] = []
-        for turn in (session.history or [])[-6:]:
-            role = turn.get("role", "user")
-            content = turn.get("message", "")
-            if content:
-                history_messages.append({"role": role, "content": content})
-
-        context_parts = []
-        if session.store:
-            context_parts.append(f"매장: {session.store}")
-        context_parts.append(f"단계: {session.stage.value}")
-        if session.selected_menu:
-            context_parts.append(f"선택 메뉴: {session.selected_menu}")
-        if session.quantity:
-            context_parts.append(f"수량: {session.quantity}")
-        if session.recommendations:
-            context_parts.append("추천 후보: " + ", ".join(session.recommendations[:3]))
-
-        state_summary = " | ".join(context_parts)
-        user_message = cleaned_message
-        if state_summary:
-            user_message += f"\n\n현재 상태: {state_summary}"
-
-        messages: List[Dict[str, str]] = [
-            {"role": "system", "content": self.prompt},
-        ]
-        messages.extend(history_messages)
-        messages.append({"role": "user", "content": user_message})
-
-        llm_reply = self.llm.chat(messages)
-        content = (llm_reply or {}).get("content") if isinstance(llm_reply, dict) else None
-        if not content:
-            return None
-
-        content = content.strip()
-        if content.startswith("```"):
-            content = content.strip("`\n")
-            if "{" in content:
-                content = content[content.find("{") : content.rfind("}") + 1]
+        if not (self.llm and getattr(self.llm, "available", False)):
+            print("[Agent] LLM not available")
+            return self._respond(session, "안녕하세요. 무엇을 도와드릴까요?", {"store": session.store}, [])
 
         try:
-            parsed = json.loads(content)
+            print(f"[Agent 응답 가능 / _loop_with_function_calling] session={session_id} stage={session.stage} store={session.store} selected_menu={session.selected_menu} quantity={session.quantity} profile={session.profile}")
+            return self._loop_with_function_calling(session, text)
         except Exception:
-            return None
+            return self._respond(session, "죄송합니다. 다시 한 번 말씀해 주세요.", {"store": session.store}, [])
 
-        speak = str(parsed.get("speak") or "무엇을 도와드릴까요?")
-        actions = parsed.get("actions")
-        if not isinstance(actions, list):
-            actions = []
-        memory_patch = parsed.get("memory")
-        if isinstance(memory_patch, dict):
-            self._apply_memory_patch(session, memory_patch)
+    # ------------------------------------------------------------------
+    def _loop_with_function_calling(self, session: Any, user_text: str) -> Dict[str, Any]:
+        # 상태 요약
+        context = [
+            f"단계: {session.stage.value}",
+            f"매장: {session.store or '미정'}",
+        ]
+        if session.selected_menu:
+            context.append(f"선택 메뉴: {session.selected_menu}")
+        if session.quantity:
+            context.append(f"수량: {session.quantity}")
+        if session.profile:
+            prefers = ", ".join(session.profile.get("prefers", [])[:3]) if session.profile.get("prefers") else ""
+            allergies = ", ".join(session.profile.get("allergies", [])[:3]) if session.profile.get("allergies") else ""
+            limits = session.profile.get("nutrition_limits") or {}
+            lim_s = ", ".join([f"{k}≤{v}" for k, v in list(limits.items())[:3]]) if limits else ""
+            brief = " / ".join([s for s in [prefers, allergies, lim_s] if s])
+            if brief:
+                context.append(f"프로필: {brief}")
 
+        # System prompt = default_prompt + 도구 목록 텍스트 + 현재 상태
+        system = (
+            default_prompt.strip()
+            + "\n\n[사용 가능한 도구]\n"
+            + (self._tools_text or "(현재 사용 가능한 도구가 없습니다)")
+            + "\n\n[상태]\n"
+            + " | ".join(context)
+            + "\n\n[형식]\n반드시 JSON만 출력하세요. 코드블록 금지."
+        )
+        print(f"[Agent] system prompt:\n{system}")
+        # 도구가 전혀 없을 때의 가드: LLM이 답변을 포기하지 않고 재질문하도록 지시
+        if not self._tool_schemas:
+            system += (
+                "\n\n[도구 없음 안내]\n"
+                "현재 사용할 수 있는 도구가 없어요. 필요한 정보가 부족하면 speak에 매우 짧은 재질문을 넣고, actions는 비워두세요."
+            )
+
+        # 히스토리
+        msgs: List[Dict[str, str]] = [{"role": "system", "content": system}]
+        for turn in (session.history or [])[-6:]:
+            role = turn.get("role", "user"); content = turn.get("message", "")
+            if content: msgs.append({"role": role, "content": content})
+        msgs.append({"role": "user", "content": user_text})
+
+        # 1차 호출 (tools 없을 때는 tool_choice를 넘기지 않음)
+        if self._tool_schemas:
+            res = self.llm.chat(msgs, tools=self._tool_schemas, tool_choice="auto")  # type: ignore
+        else:
+            res = self.llm.chat(msgs)  # type: ignore
+        print(f"[Agent] initial response: {res}")
+        msgs.append({"role": "assistant", "content": res.get("content") or ""})
+
+        # tool calls 처리
+        def _coerce_tool_calls(r: Dict[str, Any]) -> List[Dict[str, Any]]:
+            # Normalize different wrappers (our AzureLLM returns `tool_call`)
+            tc = r.get("tool_calls") or []
+            if not tc and r.get("tool_call"):
+                single = r["tool_call"] or {}
+                tc = [{
+                    "id": single.get("id") or "tc1",
+                    "type": "function",
+                    "function": {
+                        "name": single.get("name"),
+                        "arguments": single.get("arguments"),
+                    },
+                }]
+            if not tc and r.get("function_call"):
+                fc = r["function_call"]
+                tc = [{"id": "fc1", "type": "function", "function": fc}]
+            return tc
+
+        tool_calls = _coerce_tool_calls(res)
+        print(f"[Agent] tool calls: {tool_calls}")
+        guard = 0
+        while tool_calls and guard < 6:
+            for call in tool_calls:
+                fn = call.get("function", {}) or {}
+                name = (fn.get("name") or "").strip()
+                try:
+                    args = json.loads(fn.get("arguments") or "{}")
+                except Exception:
+                    args = {}
+
+                # --- 호출 전 인자 보정(리뷰: menu_names 자동 주입) ---
+                if name == "reviews" and "menu_names" not in args:
+                    names = [m.name for m in self.catalog.list(session.store)][:40]
+                    args["menu_names"] = names
+
+                # 실제 실행
+                func = self._tool_map.get(name)
+                if not func:
+                    result = {"error": f"unknown tool: {name}"}
+                else:
+                    # tools 함수는 키워드 호출
+                    result = func(**args)
+
+                msgs.append({
+                    "role": "tool",
+                    "tool_call_id": call.get("id"),
+                    "name": name,
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
+
+            if self._tool_schemas:
+                res = self.llm.chat(msgs, tools=self._tool_schemas, tool_choice="auto")  # type: ignore
+            else:
+                res = self.llm.chat(msgs)  # type: ignore
+            print(f"[Agent] tool call loop {guard} response: {res}")
+            msgs.append({"role": "assistant", "content": res.get("content") or ""})
+            tool_calls = _coerce_tool_calls(res)
+            guard += 1
+
+        # 최종 JSON 파싱
+        content = res.get("content")
+        print(f"[Agent] 최종 응답: {content}")
+        if not content:
+            print("[Agent] No content in LLM response")
+            return self._respond(session, "원하시는 메뉴를 말씀해 주세요.", {"store": session.store}, [])
+        try:
+            data = json.loads(_strip_json_fence(content))
+        except Exception:
+            return self._respond(session, "잘 못 들었어요. 다시 한 번 말씀해 주세요.", {"store": session.store}, [])
+
+        speak = str(data.get("speak") or "무엇을 도와드릴까요?").strip()
+        actions = data.get("actions") or []
+        mem_patch = data.get("memory") or {}
+
+        if isinstance(mem_patch, dict):
+            self._apply_memory_patch(session, mem_patch)
+
+        ui_actions, ui_delta = self._apply_actions(session, actions)
         session.remember_agent(speak)
         return {
             "reply": speak,
-            "ui": {"store": session.store},
-            "actions": actions,
+            "ui": {"store": session.store, **ui_delta},
+            "actions": ui_actions,
             "state": session.as_state(),
         }
 
+    # ------------------------------------------------------------------
+    def _apply_actions(self, session: Any, actions: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        ui_actions: List[Dict[str, Any]] = []
+        ui: Dict[str, Any] = {}
+
+        for a in [x for x in actions if isinstance(x, dict)][:3]:
+            t = str(a.get("type") or "").upper()
+
+            if t == "NAVIGATE":
+                ui_actions.append({"type": "NAVIGATE", "target": a.get("target")})
+
+            elif t == "SHOW_RECOMMENDATIONS":
+                items = a.get("items") or []
+                recs = []
+                for it in items[:3]:
+                    name = (it.get("name") or "").strip()
+                    m = self.catalog.find(session.store, name) if name else None
+                    recs.append({
+                        "menu_id": it.get("menu_id") or (m.id if m else name),
+                        "name": name,
+                        "reason": it.get("reason") or "",
+                        "price": getattr(m, "price", None),
+                        "desc": getattr(m, "desc", None),
+                    })
+                ui["recommendations"] = recs
+                ui_actions.append({"type": "SHOW_RECOMMENDATIONS", "items": recs})
+
+            elif t == "SELECT_MENU_BY_NAME":
+                name = str(a.get("name") or "")
+                m = self.catalog.find(session.store, name)
+                if m:
+                    session.selected_menu = m.name
+                    session.stage = ConversationStage.AWAIT_QUANTITY
+                ui_actions.append({"type": "SELECT_MENU_BY_NAME", "name": name})
+
+            elif t == "SET_QTY":
+                q = max(1, int(a.get("value", 1)))
+                session.quantity = q
+                ui_actions.append({"type": "SET_QTY", "value": q})
+
+            elif t == "INCREMENT_QTY":
+                session.quantity = max(1, int(session.quantity or 1) + 1)
+                ui_actions.append({"type": "INCREMENT_QTY"})
+
+            elif t == "DECREMENT_QTY":
+                session.quantity = max(1, int(session.quantity or 1) - 1)
+                ui_actions.append({"type": "DECREMENT_QTY"})
+
+            elif t == "ADD_TO_CART":
+                ui_actions.append({"type": "ADD_TO_CART"})
+
+            elif t == "READ_BACK_SUMMARY":
+                qty = session.quantity or 1
+                item = self.catalog.find(session.store, session.selected_menu or "")
+                total = (item.price if item else 0) * qty
+                ui["summary"] = {"item": session.selected_menu, "qty": qty, "total": total}
+                ui_actions.append({"type": "READ_BACK_SUMMARY"})
+
+            elif t == "ORDER":
+                qty = session.quantity or 1
+                item = self.catalog.find(session.store, session.selected_menu or "")
+                price = (item.price if item else 0) * qty
+                ui["payment"] = {"status": "success", "amount": price,
+                                 "items": [{"name": session.selected_menu, "price": item.price if item else 0, "quantity": qty}]}
+                session.stage = ConversationStage.ORDER_COMPLETE
+                ui_actions.append({"type": "ORDER"})
+
+        ui_actions = [a for a in ui_actions if a.get("type") in UI_ACTION_WHITELIST]
+        return ui_actions, ui
+
+    # ------------------------------------------------------------------
     def _apply_memory_patch(self, session: Any, patch: Dict[str, Any]) -> None:
         store = patch.get("store")
         if isinstance(store, str) and store.strip():
@@ -196,15 +318,15 @@ class VoiceOrderAgent:
         if isinstance(stage, str):
             try:
                 session.stage = ConversationStage(stage)
-            except ValueError:
+            except Exception:
                 pass
 
         selected = patch.get("selected_menu") or patch.get("selectedMenu")
-        if isinstance(selected, str) and selected:
-            session.selected_menu = selected
+        if isinstance(selected, str) and selected.strip():
+            session.selected_menu = selected.strip()
 
         qty = patch.get("quantity") or patch.get("qty")
-        if isinstance(qty, int):
+        if isinstance(qty, int) and qty > 0:
             session.quantity = qty
 
         recos = patch.get("recommendations")
@@ -215,6 +337,7 @@ class VoiceOrderAgent:
         if isinstance(profile, dict):
             session.profile.update(profile)
 
+    # ------------------------------------------------------------------
     def _respond(
         self,
         session: Any,
@@ -222,122 +345,10 @@ class VoiceOrderAgent:
         ui: Optional[Dict[str, Any]] = None,
         actions: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
-        final_reply = self._finalize_reply(session, raw_reply, ui or {})
-        session.remember_agent(final_reply)
+        session.remember_agent(raw_reply)
         return {
-            "reply": final_reply,
-            "ui": ui or {},
+            "reply": raw_reply,
+            "ui": ui or {"store": session.store},
             "actions": actions or [],
             "state": session.as_state(),
         }
-
-    def _finalize_reply(self, session: Any, raw_reply: str, ui: Dict[str, Any]) -> str:
-        if not self.llm:
-            return raw_reply
-        context_parts = [
-            f"현재 단계: {session.stage.value}",
-            f"매장: {session.store or '미정'}",
-        ]
-        if session.selected_menu:
-            context_parts.append(f"선택 메뉴: {session.selected_menu}")
-        if session.quantity:
-            context_parts.append(f"수량: {session.quantity}")
-        if session.recommendations:
-            context_parts.append(
-                "추천 후보: " + ", ".join(session.recommendations[:3])
-            )
-        if ui.get("recommendations"):
-            names = [rec.get("name") for rec in ui["recommendations"] if isinstance(rec, dict)]
-            if names:
-                context_parts.append("화면 추천: " + ", ".join(names))
-
-        system_prompt = (
-            self.prompt
-            + "\n위 정보와 원문을 참고하여 시니어가 이해하기 쉬운 말투로,"
-            + " 2문장 이내로 정리해서 답하세요."
-        )
-        payload = raw_reply
-        if context_parts:
-            payload += "\n\n상황 정보: " + " | ".join(context_parts)
-
-        result = self.llm.chat(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": payload},
-            ]
-        )
-        content = (result or {}).get("content") if isinstance(result, dict) else None
-        return content.strip() if isinstance(content, str) and content.strip() else raw_reply
-
-    # ------------------------------------------------------------------
-    def _extract_quantity(self, message: str) -> Optional[int]:
-        match = re.search(r"(\d+)", message)
-        if match:
-            qty = int(match.group(1))
-            return qty if qty > 0 else None
-        for word, value in KOREAN_NUMBER_WORDS.items():
-            if word in message:
-                return value
-        return None
-
-    def _match_menu_name(self, message: str, store: str) -> Optional[str]:
-        if not store:
-            return None
-        normalized = message.replace(" ", "").lower()
-        for item in self.catalog.list(store):
-            candidate = item.name.replace(" ", "").lower()
-            if candidate and candidate in normalized:
-                return item.name
-        return None
-
-    def _guess_store(self, message: str) -> Optional[str]:
-        normalized = message.replace(" ", "")
-        for store_name in self.catalog.stores():
-            if store_name.replace(" ", "") in normalized:
-                return store_name
-        if "옥소반" in message:
-            return "옥소반 마곡본점"
-        return None
-
-    def _intro_message(self, store: str, summary: str) -> str:
-        return f"{store}은 이런 곳이에요. {summary} 메뉴 추천이나 주문이 필요하시면 말씀해 주세요."
-
-    def _recommend_message(self, items: List[Any]) -> str:
-        names = [item.name for item in items if item.name]
-        if not names:
-            return "추천할 수 있는 메뉴 정보가 아직 없어요."
-        if len(names) == 1:
-            return f"{names[0]}이 특히 반응이 좋습니다. 괜찮으시면 이 메뉴로 도와드릴까요?"
-        joined = ", ".join(names)
-        return f"이 가게에서는 {joined} 메뉴가 반응이 좋아요. 관심 가는 메뉴가 있으신가요?"
-
-    def _explain_message(self, item: Any) -> str:
-        base = item.desc or "부드럽고 편하게 드시기 좋아요."
-        price = f"가격은 {item.price:,}원" if item.price else "가격 정보가 등록되어 있지 않아요"
-        return f"{item.name}은 {base} {price}."
-
-    def _complete_order(self, session: Any) -> tuple[str, Dict[str, Any]]:
-        session.stage = ConversationStage.ORDER_COMPLETE
-        qty = session.quantity or 1
-        item = self.catalog.find(session.store, session.selected_menu or "")
-        price = (item.price if item else 0) * qty
-        payment = {
-            "status": "mock",
-            "amount": price,
-            "items": [
-                {
-                    "name": session.selected_menu,
-                    "price": item.price if item else 0,
-                    "quantity": qty,
-                }
-            ],
-        }
-        ui = {"payment": payment}
-        reply = (
-            f"주문을 접수해 두었어요. {session.selected_menu} {qty}개, 총 {price:,}원으로 정리했습니다. "
-            "결제는 모의 처리이니 안심하셔도 됩니다. 다른 도움이 필요하시면 알려 주세요."
-        )
-        return reply, ui
-
-
-__all__ = ["VoiceOrderAgent"]

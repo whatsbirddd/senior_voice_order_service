@@ -1,0 +1,12 @@
+{
+  "profile": {
+    "ageGroup": "senior",
+    "allergies": ["peanut"],
+    "prefers": ["soft", "less_salt"],
+    "dislikes": ["spicy"]
+  },
+  "history": [
+    { "store": "옥소반 마곡본점", "item": "불고기정식", "quantity": 1 }
+  ]
+}
+

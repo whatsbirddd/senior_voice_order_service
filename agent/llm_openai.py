@@ -42,7 +42,9 @@ class AzureLLM:
                     api_version=self.api_version,
                     azure_endpoint=self.endpoint,
                 )
+                print("Initialized Azure OpenAI client")
             except Exception:
+                print("Failed to initialize Azure OpenAI client")
                 self._client = None
 
     @property
