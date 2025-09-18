@@ -23,6 +23,7 @@ UI_ACTION_WHITELIST = {
     "INCREMENT_QTY",
     "DECREMENT_QTY",
     "ADD_TO_CART",
+    'REMOVE_FROM_CART',
     "READ_BACK_SUMMARY",
     "ORDER",
 }
@@ -119,13 +120,31 @@ class VoiceOrderAgent:
             if brief:
                 context.append(f"프로필: {brief}")
 
-        # System prompt = default_prompt + 도구 목록 텍스트 + 현재 상태
+        # 메뉴 요약(이름/가격/간단 설명) - LLM이 근사 매칭/정규화에 활용하도록 제공
+        menu_items = []
+        try:
+            for m in self.catalog.list(session.store)[:60]:
+                name = getattr(m, "name", "")
+                price = getattr(m, "price", None)
+                desc = (getattr(m, "desc", "") or "").strip()
+                price_s = f" | {price}원" if isinstance(price, (int, float)) and price is not None else ""
+                if desc:
+                    desc = (desc[:36] + ("…" if len(desc) > 36 else ""))
+                    menu_items.append(f"- {name}{price_s} | {desc}")
+                else:
+                    menu_items.append(f"- {name}{price_s}")
+        except Exception:
+            pass
+        menu_block = "\n".join(menu_items)
+
+        # System prompt = default_prompt + 도구 목록 텍스트 + 현재 상태 + 메뉴 요약
         system = (
             default_prompt.strip()
             + "\n\n[사용 가능한 도구]\n"
             + (self._tools_text or "(현재 사용 가능한 도구가 없습니다)")
             + "\n\n[상태]\n"
             + " | ".join(context)
+            + ("\n\n[매장 메뉴]\n" + menu_block if menu_block else "")
             + "\n\n[형식]\n반드시 JSON만 출력하세요. 코드블록 금지."
         )
         print(f"[Agent] system prompt:\n{system}")
@@ -149,9 +168,7 @@ class VoiceOrderAgent:
         else:
             res = self.llm.chat(msgs)  # type: ignore
         print(f"[Agent] initial response: {res}")
-        msgs.append({"role": "assistant", "content": res.get("content") or ""})
-
-        # tool calls 처리
+        # Append assistant including tool_calls when present (required by API)
         def _coerce_tool_calls(r: Dict[str, Any]) -> List[Dict[str, Any]]:
             # Normalize different wrappers (our AzureLLM returns `tool_call`)
             tc = r.get("tool_calls") or []
@@ -170,7 +187,19 @@ class VoiceOrderAgent:
                 tc = [{"id": "fc1", "type": "function", "function": fc}]
             return tc
 
-        tool_calls = _coerce_tool_calls(res)
+        tc_list = _coerce_tool_calls(res)
+        assistant_msg: Dict[str, Any] = {"role": "assistant"}
+        if res.get("content") is not None:
+            assistant_msg["content"] = res.get("content")
+        if tc_list:
+            assistant_msg["tool_calls"] = [
+                {"id": c.get("id") or "tc1", "type": "function", "function": c.get("function") or {}}
+                for c in tc_list
+            ]
+        msgs.append(assistant_msg)
+
+        # tool calls 처리
+        tool_calls = tc_list
         print(f"[Agent] tool calls: {tool_calls}")
         guard = 0
         while tool_calls and guard < 6:
@@ -207,8 +236,17 @@ class VoiceOrderAgent:
             else:
                 res = self.llm.chat(msgs)  # type: ignore
             print(f"[Agent] tool call loop {guard} response: {res}")
-            msgs.append({"role": "assistant", "content": res.get("content") or ""})
-            tool_calls = _coerce_tool_calls(res)
+            tc_list = _coerce_tool_calls(res)
+            assistant_msg = {"role": "assistant"}
+            if res.get("content") is not None:
+                assistant_msg["content"] = res.get("content")
+            if tc_list:
+                assistant_msg["tool_calls"] = [
+                    {"id": c.get("id") or "tc1", "type": "function", "function": c.get("function") or {}}
+                    for c in tc_list
+                ]
+            msgs.append(assistant_msg)
+            tool_calls = tc_list
             guard += 1
 
         # 최종 JSON 파싱
@@ -250,18 +288,20 @@ class VoiceOrderAgent:
                 ui_actions.append({"type": "NAVIGATE", "target": a.get("target")})
 
             elif t == "SHOW_RECOMMENDATIONS":
+                # 기본 추천 목록을 구성하고, 네이버 리뷰(DDG 경유) 신호로 보강
                 items = a.get("items") or []
                 recs = []
                 for it in items[:3]:
                     name = (it.get("name") or "").strip()
                     m = self.catalog.find(session.store, name) if name else None
                     recs.append({
-                        "menu_id": it.get("menu_id") or (m.id if m else name),
+                        "menu_id": it.get("menu_id") or (getattr(m, "id", None) or name),
                         "name": name,
-                        "reason": it.get("reason") or "",
+                        "reason": (it.get("reason") or "").strip(),
                         "price": getattr(m, "price", None),
                         "desc": getattr(m, "desc", None),
                     })
+                recs = self._enrich_recommendations_with_reviews(session, recs)
                 ui["recommendations"] = recs
                 ui_actions.append({"type": "SHOW_RECOMMENDATIONS", "items": recs})
 
@@ -307,6 +347,41 @@ class VoiceOrderAgent:
 
         ui_actions = [a for a in ui_actions if a.get("type") in UI_ACTION_WHITELIST]
         return ui_actions, ui
+
+    # ------------------------------------------------------------------
+    def _enrich_recommendations_with_reviews(self, session: Any, recs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Use web reviews (Naver-heavy via DuckDuckGo) to refine reasons/order.
+
+        - Adds a '리뷰 언급 N회' suffix when available
+        - Reorders by mention count desc while preserving original order ties
+        """
+        try:
+            names = [r.get("name") for r in recs if r.get("name")]
+            # Provide menu_names to improve mention detection
+            data = toolmod.reviews(store=session.store, menu_names=names, max_results=8, fetch_pages=False)
+            mentions = data.get("menu_mentions") or []
+            # Map normalized name -> count
+            norm = lambda s: str(s or "").replace(" ", "").lower()
+            counts = {norm(m.get("name")): int(m.get("count", 0) or 0) for m in mentions if m.get("name")}
+
+            enriched: List[Dict[str, Any]] = []
+            for r in recs:
+                n = norm(r.get("name"))
+                c = counts.get(n, 0)
+                reason = (r.get("reason") or "").strip()
+                if c > 0:
+                    tag = f"리뷰 언급 {c}회"
+                    reason = tag if not reason else f"{reason} · {tag}"
+                r2 = {**r, "reason": reason}
+                r2["_mention_count"] = c
+                enriched.append(r2)
+            # sort by mention count desc, stable for ties
+            enriched.sort(key=lambda x: x.get("_mention_count", 0), reverse=True)
+            for r in enriched:
+                r.pop("_mention_count", None)
+            return enriched[:3]
+        except Exception:
+            return recs[:3]
 
     # ------------------------------------------------------------------
     def _apply_memory_patch(self, session: Any, patch: Dict[str, Any]) -> None:

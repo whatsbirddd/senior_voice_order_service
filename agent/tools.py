@@ -277,6 +277,79 @@ def place(store: str) -> Dict[str, Any]:
 
 
 # ─────────────────────────────────────────────────────────────
+# 4) 추천 집계(reviews + nutrition + catalog)
+# ─────────────────────────────────────────────────────────────
+def recommend(store: str, top_n: int = 3, profile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    리뷰 언급과 간단 영양 태그, 선호/비선호/알레르리를 고려해 상위 N개 추천.
+
+    TOOL_SPEC={
+      "name": "recommend",
+      "description": "리뷰/영양/프로필(선호·비선호·알레르기)을 고려해 상위 N개 메뉴를 추천합니다.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "store": {"type": "string"},
+          "top_n": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3},
+          "profile": {"type": "object"}
+        },
+        "required": ["store"]
+      }
+    }
+    Returns: {"items": [{"name": str, "reason": str}], "debug": {...}}
+    """
+    if not _CURRENT_CATALOG:
+        return {"items": []}
+
+    try:
+        prof = profile or {}
+        prefers = {str(x).lower() for x in (prof.get("prefers") or [])}
+        dislikes = {str(x).lower() for x in (prof.get("dislikes") or [])}
+        allergies = {str(x).lower() for x in (prof.get("allergies") or [])}
+
+        items = _CURRENT_CATALOG.list(store)
+        names = [m.name for m in items]
+        rev = reviews(store=store, menu_names=names, max_results=8, fetch_pages=False)
+        mention_map = {str(x.get("name", "")).replace(" ", "").lower(): int(x.get("count", 0) or 0) for x in (rev.get("menu_mentions") or [])}
+
+        def score(m) -> float:
+            s = 0.0
+            nm = m.name.replace(" ", "").lower()
+            desc = str(getattr(m, "desc", "")).lower()
+            # review boost
+            s += 0.6 * mention_map.get(nm, 0)
+            # prefers/dislikes
+            if any(p in desc for p in prefers):
+                s += 0.5
+            if any(d in desc for d in dislikes):
+                s -= 0.5
+            # allergies block (if mentioned in desc)
+            if any(a in desc for a in allergies):
+                s -= 2.0
+            return s
+
+        ranked = sorted(items, key=score, reverse=True)
+        out: List[Dict[str, Any]] = []
+        for m in ranked:
+            if len(out) >= int(top_n or 3):
+                break
+            nm = m.name
+            desc = str(getattr(m, "desc", ""))
+            mention = mention_map.get(nm.replace(" ", "").lower(), 0)
+            tag = []
+            if prefers and any(p in desc.lower() for p in prefers):
+                tag.append("선호")
+            if mention:
+                tag.append(f"리뷰 언급 {mention}회")
+            reason = " · ".join(tag) if tag else (desc[:24] + ("…" if len(desc) > 24 else ""))
+            out.append({"name": nm, "reason": reason})
+
+        return {"items": out, "debug": {"mentions": mention_map}}
+    except Exception:
+        return {"items": []}
+
+
+# ─────────────────────────────────────────────────────────────
 # Docstring → OpenAI tools 스키마/설명 텍스트 생성
 # ─────────────────────────────────────────────────────────────
 def discover_tools() -> Tuple[List[Dict[str, Any]], Dict[str, Any], str]:

@@ -1,6 +1,6 @@
 'use client';
 
-import { chatWithAgent, generateSessionId, AgentResponse } from '../lib/agent';
+import { chatWithAgent, generateSessionId, AgentResponse, BACKEND_BASE } from '../lib/agent';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styles from './VoiceOrderScreen.module.css';
 import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
@@ -31,24 +31,38 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
   const [transcript, setTranscript] = useState('');
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [selectedStore, setSelectedStore] = useState('옥소반 마곡본점');
+  const [selectedStore, setSelectedStore] = useState('맥도날드');
   const [currentStep, setCurrentStep] = useState<'store' | 'menu' | 'order' | 'confirm'>('store');
   const [isProcessing, setIsProcessing] = useState(false);
   // const recognitionRef = useRef<any>(null);
   // const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const [latestAgentMessage, setLatestAgentMessage] = useState('안녕하세요. 옥소반 마곡본점이에요. 메뉴 추천 도와드릴까요?');
+  const [latestAgentMessage, setLatestAgentMessage] = useState('어서오세요. 메뉴 추천이나 주문을 말씀해 주시면 제가 도와드릴게요.');
 
   // ★ Agent 대화 상태(시니어 친화 안내)
   const [agentMessages, setAgentMessages] = useState<{ role: 'assistant' | 'user'; content: string }[]>([
-    { role: 'assistant', content: '안녕하세요. 옥소반 마곡본점이에요. 메뉴 추천 도와드릴까요?' },
+    { role: 'assistant', content: '어서오세요. 메뉴 추천이나 주문을 말씀해 주시면 제가 도와드릴게요.' },
   ]);
   const [agentLoading, setAgentLoading] = useState(false);
 
-  const storeImages: Record<string, string> = {
-    '옥소반 마곡본점': 'https://images.unsplash.com/photo-1527169402691-feff5539e52c?auto=format&fit=crop&w=960&q=80',
-  };
-
-  const heroImage = storeImages[selectedStore] || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=960&q=80';
+  // Dynamically resolve store image from public/images: try .jpeg/.jpg/.png, then fallback
+  const [heroImage, setHeroImage] = useState<string>('/images/restaurant.jpg');
+  useEffect(() => {
+    const name = selectedStore || '';
+    const candidates = ['.jpeg', '.jpg', '.png'].map(ext => `/images/${encodeURIComponent(name)}${ext}`);
+    let i = 0;
+    const tryNext = () => {
+      if (i >= candidates.length) {
+        setHeroImage('/images/restaurant.jpg');
+        return;
+      }
+      const url = candidates[i++];
+      const img = new Image();
+      img.onload = () => setHeroImage(url);
+      img.onerror = tryNext;
+      img.src = url;
+    };
+    tryNext();
+  }, [selectedStore]);
   const synthesizerRef = useRef<sdk.SpeechSynthesizer | null>(null);
 
   const ensureAzureTTS = async () => {
@@ -71,33 +85,10 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
       });
     } catch (e) { console.error('[Azure TTS error]', e); }
   }, []);
-  // const speak = useCallback((text: string) => {
-  //   if (typeof window === 'undefined' || !text) {
-  //     return;
-  //   }
-  //   const synth = window.speechSynthesis;
-  //   if (!synth) {
-  //     return;
-  //   }
-  //   synth.cancel();
-  //   const utterance = new SpeechSynthesisUtterance(text);
-  //   utterance.lang = 'ko-KR';
-  //   utterance.rate = 0.95;
-  //   speechRef.current = utterance;
-  //   synth.speak(utterance);
-  // }, []);
 
   useEffect(() => {
     speak(latestAgentMessage);
   }, [latestAgentMessage, speak]);
-
-  // useEffect(() => {
-  //   return () => {
-  //     if (typeof window !== 'undefined') {
-  //       window.speechSynthesis?.cancel();
-  //     }
-  //   };
-  // }, []);
 
   // Azure STT 객체
   const recognizerRef = useRef<sdk.SpeechRecognizer | null>(null);
@@ -106,6 +97,29 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
   const finalHandledRef = useRef(false);
   // Prevent repeating one-off follow-up prompts until the user speaks again
   const followupShownRef = useRef(false);
+
+  // 메뉴 불러오기: backend catalog (oxoban_menu.json에서 부팅)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${BACKEND_BASE}/api/menu?store=${encodeURIComponent(selectedStore)}`);
+        if (!res.ok) throw new Error(`menu load ${res.status}`);
+        const data = await res.json();
+        const items = (data?.menu || []).map((it: any, idx: number): MenuItem => ({
+          id: String(it.id || it.name || `item-${idx}`),
+          name: String(it.name || ''),
+          price: Number(it.price || 0),
+          description: String(it.description || it.desc || ''),
+          category: '추천',
+        }));
+        if (alive) setMenuItems(items);
+      } catch (e) {
+        console.error('[menu load error]', e);
+      }
+    })();
+    return () => { alive = false; };
+  }, [selectedStore]);
 
   // 토큰/객체 보장
   const ensureAzure = async () => {
@@ -304,7 +318,8 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
       try { handleAgentActions(actions); } catch { }
       // If no actions and we are in the menu step, guide the user with a follow-up (only once per utterance)
       if (!hadActions && currentStep === 'menu' && !followupShownRef.current) {
-        const followup = '관심 있는 메뉴 이름을 말씀해 주세요. 예) "불고기정식"';
+        // reply 가 있으면 follow-up을 reply로 사용하기
+        const followup = reply || '관심 있는 메뉴 이름을 말씀해 주세요. 예) "불고기정식"';
         setLatestAgentMessage(followup);
         setAgentMessages((m) => [...m, { role: 'assistant', content: followup }]);
         followupShownRef.current = true;
@@ -543,9 +558,9 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
       {latestAgentMessage && (
         <div className={styles.agentCard} style={{ marginBottom: 16 }}>
           <p className={styles.agentMessage}>{latestAgentMessage}</p>
-          {!agentLoading && (
+          {/* {!agentLoading && (
             <p className={styles.agentHint}>메뉴 이름을 말씀해 주세요. 예) "불고기정식"</p>
-          )}
+          )} */}
         </div>
       )}
 

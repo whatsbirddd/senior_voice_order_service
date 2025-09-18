@@ -175,23 +175,6 @@ def get_reviews(store: str) -> Dict[str, Any]:
     return {"store": store, "summary": "리뷰 서비스 비활성화", "highlights": []}
 
 
-@app.post("/api/recommend")
-def recommend_menu(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
-    store = str(payload.get("store", "")).strip()
-    if not store:
-        raise HTTPException(status_code=400, detail="store is required")
-    items = catalog.list(store) if catalog else []
-    if not items:
-        items = _fallback_menu(store)
-    # naive top-3
-    return {"store": store, "suggested": [it.to_api() for it in items[:3]]}
-
-
-@app.get("/api/place")
-def get_place(store: str) -> Dict[str, Any]:
-    url = f"https://map.naver.com/v5/search/{store}"
-    return {"store": store, "mapUrl": url}
-
 
 @app.post("/api/pay")
 def mock_pay(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
@@ -257,41 +240,6 @@ def agent_chat_legacy(req: AgentChatRequest) -> Dict[str, Any]:
     return agent_chat(req)
 
 
-@app.post("/api/search-menu")
-def search_menu(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
-    store = payload.get("store_name") or payload.get("store") or "가게"
-    query = payload.get("query", "")
-    recos = catalog.list(store)[:3] if catalog and catalog.list(store) else _fallback_menu(store)
-    return {
-        "store_name": store,
-        "query": query,
-        "recommendations": [item.to_api() for item in recos],
-    }
-
-
-@app.post("/api/naver-menu-info")
-def naver_menu_info(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
-    menu_name = str(payload.get("menu_name", "")).strip()
-    store = str(payload.get("store_name") or payload.get("store") or "").strip() or "매장"
-    if not menu_name:
-        raise HTTPException(status_code=400, detail="menu_name is required")
-    item = None
-    if store:
-        item = catalog.find(store, menu_name)
-    description = item.desc if item else f"{menu_name}은 깔끔하게 조리되어 부담 없이 드시기 좋습니다."
-    price = item.price if item else 0
-    return {
-        "success": True,
-        "menu_info": {
-            "menu_name": menu_name,
-            "store_name": store,
-            "description": description,
-            "price": f"{price:,}원" if price else "문의 바랍니다",
-            "reviews": reviews.get(store).reviews if store else [],
-        },
-    }
-
-
 @app.post("/api/samsung-pay")
 def samsung_pay(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
     required = ["items", "total_amount", "store_name"]
@@ -321,26 +269,6 @@ def samsung_pay(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[st
                 "receipt_url": f"https://receipt.samsung.com/{receipt_number}",
             },
             "message": "결제가 성공적으로 완료되었습니다.",
-        },
-    }
-
-
-@app.post("/api/generate-qr")
-def generate_qr(payload: Dict[str, Any] = Body(default_factory=dict)) -> Dict[str, Any]:
-    order_number = payload.get("order_number") or f"ORD_{random.randint(10000, 99999)}"
-    expires = datetime.utcnow() + timedelta(minutes=10)
-    return {
-        "success": True,
-        "qr_data": {
-            "qr_code_url": f"https://qr.samsung.com/order/{order_number}",
-            "qr_code_data": f"samsung-pay://order/{order_number}",
-            "order_number": order_number,
-            "expires_at": expires.isoformat() + "Z",
-            "instructions": [
-                "삼성페이 앱을 열고",
-                "화면 아래 QR 버튼을 누른 뒤",
-                "QR 코드를 스캔하면 결제 화면이 열립니다.",
-            ],
         },
     }
 
