@@ -476,8 +476,12 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
 
     // 메뉴 선택 화면에서의 명령(기존 로직 유지)
     if (currentStep === 'menu') {
+      let addedBySpeech = false;
       menuItems.forEach(item => {
         if (lower.includes(item.name.toLowerCase())) {
+          // 사용자가 특정 메뉴를 말한 경우 즉시 담기 시도 + pending으로 표시
+          addedBySpeech = true;
+          pendingItemRef.current = item;
           addToOrder(item);
         }
       });
@@ -485,16 +489,19 @@ const VoiceOrderScreen: React.FC<VoiceOrderScreenProps> = ({ onOrderComplete }) 
       if (/주문(하기)?|결제/.test(lower)) {
         if (orderItems.length > 0) {
           handleOrderComplete();
+        } else if (addedBySpeech) {
+          // 방금 담은 경우 상태 반영 직후 주문 완료를 트리거
+          setTimeout(() => handleOrderComplete(), 0);
         } else if (pendingItemRef.current) {
           // 최근 선택된 메뉴가 있다면 1개 기준으로 바로 담고 주문 진행
           ensureOrderItem(pendingItemRef.current, 1);
-          handleOrderComplete();
+          setTimeout(() => handleOrderComplete(), 0);
         } else {
           // 장바구니 비어 있으면 에이전트에 위임 + 안내 멘트
-          const follow = '장바구니가 비어 있어요. 메뉴 이름을 말씀해 주세요. 예) "불고기정식"';
+          const follow = '어떤 메뉴를 주문할까요? 메뉴 이름을 말씀해 주세요. 예) "불고기정식"';
           setLatestAgentMessage(follow);
           setAgentMessages((m) => [...m, { role: 'assistant', content: follow }]);
-          try { askAgent('주문하려고 하는데 메뉴가 정해지지 않았어요. 추천해 주세요.'); } catch { }
+          try { askAgent('주문을 원해요. 아직 메뉴를 고르지 않았어요. 추천 또는 후보를 안내해 주세요.'); } catch { }
         }
       }
 

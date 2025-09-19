@@ -36,7 +36,6 @@ export async function chatWithAgent(request: AgentChatRequest): Promise<AgentRes
     },
     body: JSON.stringify(request),
   });
-
   if (!response.ok) {
     throw new Error(`Agent API error: ${response.status}`);
   }

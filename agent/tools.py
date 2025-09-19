@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote_plus
-
+import os
 import requests
 
 try:
@@ -354,7 +354,7 @@ def place(store: str) -> Dict[str, Any]:
  
 # 업데이트 된 맥도날드 메뉴별 리뷰 (menu 필드 포함)
 _MCD_REVIEWS = [
-    {"store": "맥도날드", "branch": "강남점", "menu": "빅맥", "rating": 5, "review": "빅맥은 역시 최고입니다! 패티와 소스가 완벽하게 어울려요."},
+    {"store": "맥도날드", "branch": "강남점", "menu": "빅맥", "rating": 3, "review": "빅맥은 역시 최고입니다! 패티와 소스가 완벽하게 어울려요. 다만 사이즈가 너무 커서 한입에 먹기에는 불편해요. 어르신분들은 드시기 어려우실 거 같아요."},
     {"store": "맥도날드", "branch": "홍대점", "menu": "맥치킨", "rating": 4, "review": "맥치킨이 바삭하고 촉촉해서 맛있었어요. 소스도 잘 어울렸습니다."},
     {"store": "맥도날드", "branch": "신촌점", "menu": "맥너겟", "rating": 3, "review": "맥너겟은 평범한 맛이었지만 소스가 맛있었어요."},
     {"store": "맥도날드", "branch": "잠실점", "menu": "상하이 스파이시 버거", "rating": 5, "review": "상하이 스파이시 버거는 매콤하고 바삭해서 정말 맛있어요!"},
@@ -459,7 +459,7 @@ def recommend(store: str, user: Optional[str] = None, top_n: int = 3,
     Azure OpenAI GPT를 사용해 매장 직원이 고객님께 다정하고 세심하게 2~3개 메뉴를 제안하는 문장을 생성합니다.
     (손주가 살뜰히 챙기듯 배려하되 호칭은 항상 '고객님')
     TOOL_SPEC={
-      "name": "llm_recommend",
+      "name": "recommend",
       "description": "사용자 이력(있으면) 또는 리뷰 감성(별점 4이상 긍정, 2이하 부정)을 활용해 직원 톤으로 2~3개 메뉴를 한국어 자연문으로 추천합니다.",
       "parameters": {
         "type": "object",
@@ -556,6 +556,7 @@ def recommend(store: str, user: Optional[str] = None, top_n: int = 3,
                 top_p=0.9,
             )
             text = (resp.choices[0].message.content or "").strip()
+            print(f"[recommend] : {text}")
             # 형식 방어: JSON/목록/기호 제거
             if text.startswith("{") or text.startswith("["):
                 text = re.sub(r"[{}\[\]]", " ", text)
