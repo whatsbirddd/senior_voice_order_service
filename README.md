@@ -10,6 +10,18 @@
 - 프론트: `voice_mvp/src/` (UI: `voice_mvp/src/components/VoiceOrderScreen.tsx`)
 - 샘플 메뉴: `voice_mvp/data/oxoban_menu.json`
 
+## 스크린샷
+
+아래 이미지는 주요 사용자 흐름 예시입니다.
+
+![화면 1 — 매장 소개/환영](examples/screen1.png)
+
+![화면 2 — 음성 주문(에이전트 안내)](examples/screen2.png)
+
+![화면 3 — 메뉴 목록/담기](examples/screen3.png)
+
+![화면 4 — 주문 요약/완료](examples/screen4.png)
+
 ## 빠른 시작
 
 1) Python 백엔드 실행
