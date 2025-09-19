@@ -12,24 +12,45 @@
 
 ## 스크린샷
 
-아래 이미지는 주요 사용자 흐름 예시입니다.
+아래 이미지는 주요 사용자 흐름 예시입니다. (축소 표시)
 
-![화면 1 — 매장 소개/환영](examples/screen1.png)
-
-![화면 2 — 음성 주문(에이전트 안내)](examples/screen2.png)
-
-![화면 3 — 메뉴 목록/담기](examples/screen3.png)
-
-![화면 4 — 주문 요약/완료](examples/screen4.png)
+<table>
+  <tr>
+    <td align="center">
+      <img src="examples/screen1.png" width="300" alt="화면 1 — 매장 소개/환영" /><br/>
+      <sub>화면 1 — 매장 소개/환영</sub>
+    </td>
+    <td align="center">
+      <img src="examples/screen2.png" width="300" alt="화면 2 — 음성 주문(에이전트 안내)" /><br/>
+      <sub>화면 2 — 음성 주문(에이전트 안내)</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="examples/screen3.png" width="300" alt="화면 3 — 메뉴 목록/담기" /><br/>
+      <sub>화면 3 — 메뉴 목록/담기</sub>
+    </td>
+    <td align="center">
+      <img src="examples/screen4.png" width="300" alt="화면 4 — 주문 요약/완료" /><br/>
+      <sub>화면 4 — 주문 요약/완료</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <sub>원본 크기는 `voice_mvp/examples/`에서 확인하세요.</sub>
+    </td>
+  </tr>
+  
+</table>
 
 ## 빠른 시작
 
 1) Python 백엔드 실행
 - 권장: Python 3.10+ 가상환경 생성 후 의존성 설치
-  - `pip install -r senior_voice_order_service/fastapi_app/requirements.txt`
+  - `pip install -r voice_mvp/fastapi_app/requirements.txt`
 - 환경변수 설정(필요 시 아래 [환경 변수] 참고)
 - 개발 서버 실행
-  - `uvicorn senior_voice_order_service.fastapi_app.main:app --reload --port 8000`
+  - `uvicorn voice_mvp.fastapi_app.main:app --reload --port 8000`
   - .env를 인식하지 못한다면, fastapi_app에 .env를 추가하고 fastapi_app 에서 `uvicorn main:app --reload --port 8000` 를 실행하세요.
 
 2) Next.js 프론트 실행 (별도 터미널)
